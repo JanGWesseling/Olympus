@@ -10,8 +10,12 @@ module Grass
   Gauss3x = [0.1127017, 0.5000000, 0.8872983]
   Gauss3w = [0.2777778, 0.4444444, 0.2777778]
 
+  sensorDepth = [-0.1, -0.2, -0.3, -0.4, -0.5, -0.75, -1.0] # m
+  sensorDistance = [0.0, 1.0, 2.0, 5.0, 10.0] # m
+
   CropFactorDaynumber = [1.0 1.0;
                         366.0 1.0]
+
   SpecificLeafAreaDaynumber = [1.00 0.0015;
                                80.00 0.0015;
                                300.00 0.0020;
@@ -60,8 +64,8 @@ module Grass
 
   RelativeDeathRateOfLeavesByWaterStress = 0.05
 
-  RootDepthRootWeight = [300.00   20.0;
-                         2500.00   40.0]
+  RootDepthRootWeight = [300.00   -0.20;
+                         2500.00   -0.40]
 
   RelativeRootDensityRelativeRootDepth = [0.0   1.000;
                                           0.1   0.741;
@@ -91,7 +95,7 @@ module Grass
 
   initialWeight = 1000.0
 
-  maximumRootingDepth = 50.0
+  maximumRootingDepth = 0.05
   maximumRootWeight = 4000.0
   thresholdTempLeafAgeing = 0.0
   specificStemArea = 0.0004
@@ -135,35 +139,35 @@ module Grass
   profile = 0
 
   cropYield = OffsetArray{Main.Control.Types.CropYield}
-  cropDate = Array{Dates.Date}(undef,366)
-  cropYieldPotentialLiving = Array{Float64}(undef,366)
-  cropYieldActualLiving = Array{Float64}(undef,366)
-  cropYieldMoistureLiving = Array{Float64}(undef,366)
-  cropYieldTemperatureLiving = Array{Float64}(undef,366)
-  mowedActual = Array{Float64}(undef,366)
-  mowedPotential = Array{Float64}(undef,366)
-  mowedTemperature = Array{Float64}(undef,366)
-  mowedMoisture = Array{Float64}(undef,366)
-  laiActual = Array{Float64}(undef,366)
-  laiPotential = Array{Float64}(undef,366)
-  laiMoisture = Array{Float64}(undef,366)
-  laiTemperature = Array{Float64}(undef,366)
-  factorMoisture = Array{Float64}(undef,366)
-  factorTemperature = Array{Float64}(undef,366)
-  eppActual = Array{Float64}(undef,366)
-  eppPotential = Array{Float64}(undef,366)
-  eppMoisture = Array{Float64}(undef,366)
-  eppTemperature = Array{Float64}(undef,366)
-  epaActual = Array{Float64}(undef,366)
-  epaPotential = Array{Float64}(undef,366)
-  epaMoisture = Array{Float64}(undef,366)
-  epaTemperature = Array{Float64}(undef,366)
-  soilTemperatureAt5cm = Array{Float64}(undef,366)
-  soilTemperatureAt20cm = Array{Float64}(undef,366)
-  soilTemperatureAt40cm = Array{Float64}(undef,366)
-  pressureHeadAt5cm = Array{Float64}(undef,366)
-  pressureHeadAt20cm = Array{Float64}(undef,366)
-  pressureHeadAt40cm = Array{Float64}(undef,366)
+  cropDate = Array{Dates.Date}(undef,365)
+  cropYieldPotentialLiving = Array{Float64}(undef,365)
+  cropYieldActualLiving = Array{Float64}(undef,365)
+  cropYieldMoistureLiving = Array{Float64}(undef,365)
+  cropYieldTemperatureLiving = Array{Float64}(undef,365)
+  mowedActual = Array{Float64}(undef,365)
+  mowedPotential = Array{Float64}(undef,365)
+  mowedTemperature = Array{Float64}(undef,365)
+  mowedMoisture = Array{Float64}(undef,365)
+  laiActual = Array{Float64}(undef,365)
+  laiPotential = Array{Float64}(undef,365)
+  laiMoisture = Array{Float64}(undef,365)
+  laiTemperature = Array{Float64}(undef,365)
+  factorMoisture = Array{Float64}(undef,365)
+  factorTemperature = Array{Float64}(undef,365)
+  eppActual = Array{Float64}(undef,365)
+  eppPotential = Array{Float64}(undef,365)
+  eppMoisture = Array{Float64}(undef,365)
+  eppTemperature = Array{Float64}(undef,365)
+  epaActual = Array{Float64}(undef,365)
+  epaPotential = Array{Float64}(undef,365)
+  epaMoisture = Array{Float64}(undef,365)
+  epaTemperature = Array{Float64}(undef,365)
+  soilTemperatureAt10cm = Array{Float64}(undef,365)
+  soilTemperatureAt20cm = Array{Float64}(undef,365)
+  soilTemperatureAt40cm = Array{Float64}(undef,365)
+  pressureHeadAt10cm = Array{Float64}(undef,365)
+  pressureHeadAt20cm = Array{Float64}(undef,365)
+  pressureHeadAt40cm = Array{Float64}(undef,365)
 
   mowingDayActual = Array{Int64}(undef,1)
   mowingDayPotential = Array{Int64}(undef,1)
@@ -179,6 +183,11 @@ module Grass
   gettingMowingDaysPotential = true
   gettingMowingDaysTemperature = true
   gettingMowingDaysMoisture = true
+
+  actualTranspiration = ""
+  firstMowingDate = ""
+  harvested = ""
+  leftAtField = ""
 
   function interpolate(aData :: Array{Float64}, aX :: Float64)
     y = -999.0
@@ -200,6 +209,19 @@ module Grass
     finally
     end
     return y
+  end
+
+  function setSimulatedData(aHead :: DataFrame, aTemp :: DataFrame)
+    try
+      try
+        global simulatedHead = aHead
+        global simulatedTemperature = aTemp
+      catch e
+        println("???ERROR in Grass.setSimulatedData: ",e)
+      end
+    finally
+#      println(simulatedHead[180,2])
+    end
   end
 
   function resetMowingDays()
@@ -263,7 +285,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          actual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          actual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -271,7 +293,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          potential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          potential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -279,7 +301,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          moisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          moisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -287,7 +309,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          temperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          temperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -295,7 +317,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyPotential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyPotential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -303,7 +325,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyActual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyActual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -311,7 +333,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyMoisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyMoisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -319,7 +341,7 @@ module Grass
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyTemperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyTemperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           global cropYield[i] = Main.Control.Types.CropYield(d, i, 0.0, 0.0, dailyPotential, dailyActual,
             dailyMoisture, dailyTemperature, potential, actual, moisture, temperature)
@@ -794,6 +816,7 @@ module Grass
           end
 
 #         leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
           slatpot = interpolate(SpecificLeafAreaDaynumber, t)
           if cropYield[aDay-1].potential.laiExp < 6.0
             dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
@@ -805,6 +828,9 @@ module Grass
               slat = gla/growthRateLeaves
             end
           end
+
+#         lai in case of exponential growthRateStem
+          global cropYield[aDay].potential.laiExp += glaiexp
 
 #         growth rate stems
           wst = cropYield[aDay-1].potential.stem.living
@@ -1120,6 +1146,7 @@ module Grass
           end
 
 #         leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
           slatpot = interpolate(SpecificLeafAreaDaynumber, t)
           if cropYield[aDay-1].actual.laiExp < 6.0
             dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
@@ -1131,6 +1158,9 @@ module Grass
               slat = gla/growthRateLeaves
             end
           end
+
+#       lai in case of exponential growthRateStem
+        global cropYield[aDay].actual.laiExp += glaiexp
 
 #         growth rate stems
           wst = cropYield[aDay-1].actual.stem.living
@@ -1441,6 +1471,7 @@ module Grass
           end
 
 #         leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
           slatpot = interpolate(SpecificLeafAreaDaynumber, t)
           if cropYield[aDay-1].moisture.laiExp < 6.0
             dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
@@ -1452,6 +1483,9 @@ module Grass
               slat = gla/growthRateLeaves
             end
           end
+
+#         lai in case of exponential growthRateStem
+          global cropYield[aDay].moisture.laiExp += glaiexp
 
 #         growth rate stems
           wst = cropYield[aDay-1].moisture.stem.living
@@ -1760,6 +1794,7 @@ module Grass
           end
 
 #         leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
           slatpot = interpolate(SpecificLeafAreaDaynumber, t)
           if cropYield[aDay-1].temperature.laiExp < 6.0
             dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
@@ -1771,6 +1806,9 @@ module Grass
               slat = gla/growthRateLeaves
             end
           end
+
+#         lai in case of exponential growthRateStem
+          global cropYield[aDay].temperature.laiExp += glaiexp
 
 #         growth rate stems
           wst = cropYield[aDay-1].temperature.stem.living
@@ -1860,49 +1898,39 @@ module Grass
     end
   end
 
-  function readDeltaresData(aDay :: Int64)
-    dataRead = nothing
-    try
-      try
-        baseFileName = "/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/DataDeltares/"
-        dataFile = "profiel" * string(profile) * "/sim_" * string(aDay+364) * "c" * string(position) * ".csv"
-        dataFile = baseFileName * dataFile
-        dataRead = CSV.read(dataFile, DataFrame)
-#        dataRead[:,"Temperature"] = dataRead[:,"Temperature"] .- 273.15
-        dataRead[:,"Head"] = (dataRead[:,"Head"] .- dataRead[:, "Y"]) .* 100.0
-      catch e
-        println("???ERROR in Grass.readDeltaresData: ", e)
-      end
-    finally
-#      println(dataRead)
-    end
-    return dataRead
-  end
 
-  function moistureFactor(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64, aData :: DataFrame)
+  function moistureFactor(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64)
     fMoisture = 0.0
     try
       try
-        hLim = interpolate(moistureLimitEvaporativeDemand, aMeteo.evapPenman)
-        global moistureUptakePressureHead[2,1] = hLim
+          hLim = interpolate(moistureLimitEvaporativeDemand, aMeteo.evapPenman)
+          global moistureUptakePressureHead[2,1] = hLim
 
-        node = 1
-        head = -1.0
-        while node < size(aData,1)
-          node += 1
-          dz = aData[node-1,"Y"] - aData[node,"Y"]
-          head = 0.5 * (aData[node-1,"Head"] + aData[node,"Head"])
-          if aDepth >= aData[node,"Y"]
-            dz = aData[node-1,"Y"] - aDepth
-            node = size(aData,1)
-            h = aData[node-1,"Head"] + (aData[node,"Head"] - aData[node-1,"Head"]) * (aDepth - aData[node-1,"Y"]) / (aData[node,"Y"] - aData[node-1,"Y"])
-            head = 0.5 * (aData[node-1,"Head"] + h)
-          end
+          node = 1
+          head = -1.0
+
+          dz = -1.0 * sensorDepth[1]
+          head = simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1]
           fMoisture += dz * interpolate(moistureUptakePressureHead, head)
-        end
-        fMoisture = fMoisture / abs(aDepth)
-#        println(fMoisture)
-#        exit(0)
+
+          if aDepth < sensorDepth[1]
+            while node < size(sensorDepth,1)
+              node += 1
+              dz = sensorDepth[node-1] - sensorDepth[node]
+              head = 0.5 * (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1])
+              if aDepth >= sensorDepth[node]
+                dz = sensorDepth[node-1] - aDepth
+                node = size(sensorDepth,1)
+                h = simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1] -
+                    simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node]) * (aDepth - sensorDepth[node-1]) / (sensorDepth[node] - sensorDepth[node-1])
+                head = 0.5 * (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + h)
+              end
+              fMoisture += dz * interpolate(moistureUptakePressureHead, head)
+            end
+          end
+          fMoisture = fMoisture / abs(aDepth)
+  #        println(fMoisture)
+  #        exit(0)
       catch e
         println("???ERROR in Grass.moistureFactor: ",e)
       end
@@ -1911,27 +1939,33 @@ module Grass
     return fMoisture
   end
 
-  function temperatureFactor(aDepth :: Float64, aData :: DataFrame)
+  function temperatureFactor(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64)
     fTemperature = 0.0
     try
       try
-        node = 1
-        temp = -1.0
-        while node < size(aData,1)
-          node += 1
-          dz = aData[node-1,"Y"] - aData[node,"Y"]
-          temp = 0.5 * (aData[node-1,"Temperature"] + aData[node,"Temperature"])
-#          temp = 26.0
-          if aDepth >= aData[node,"Y"]
-            dz = aData[node-1,"Y"] - aDepth
-            node = size(aData,1)
-            t = aData[node-1,"Temperature"] + (aData[node,"Temperature"] - aData[node-1,"Temperature"]) * (aDepth - aData[node-1,"Y"]) / (aData[node,"Y"] - aData[node-1,"Y"])
-            temp = 0.5 * (aData[node-1,"Temperature"] + t)
-#            temp = 26.0
-          end
+          dz = -1.0 * sensorDepth[1]
+          node = 1
+          temp = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1]
           fTemperature += dz * interpolate(growthFactorTemperature, temp)
-        end
-        fTemperature = fTemperature / abs(aDepth)
+
+          if aDepth < sensorDepth[1]
+            while node < size(sensorDepth,1)
+              node += 1
+              dz = sensorDepth[node-1] - sensorDepth[node]
+              temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1])
+              if aDepth >= sensorDepth[node]
+                dz = sensorDepth[node-1] - aDepth
+                node = size(sensorDepth,1)
+                t = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] +
+                    (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1] -
+                    simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node]) *
+                    (aDepth - sensorDepth[node-1]) / (sensorDepth[node] - sensorDepth[node-1])
+                temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + t)
+              end
+              fTemperature += dz * interpolate(growthFactorTemperature, temp)
+            end
+          end
+          fTemperature = fTemperature / abs(aDepth)
 #        println(aDepth, "   ", temp, "   ", fTemperature)
 #        exit(0)
       catch e
@@ -1992,16 +2026,16 @@ module Grass
     end
   end
 
-  function storeDeltaresData(aData :: DataFrame, aDay :: Int64)
+  function storeDeltaresData(aDay :: Int64)
     try
       try
-        global soilTemperatureAt5cm[aDay] = aData[2,"Temperature"]
-        global soilTemperatureAt20cm[aDay] = aData[5,"Temperature"]
-        global soilTemperatureAt40cm[aDay] = aData[9,"Temperature"]
-        global pressureHeadAt5cm[aDay] = aData[2,"Head"]
-        global pressureHeadAt20cm[aDay] = aData[5,"Head"]
-        global pressureHeadAt40cm[aDay] = aData[9,"Head"]
-  #      println(pressureHeadAt40cm[aDay])
+          global soilTemperatureAt10cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 2]
+          global soilTemperatureAt20cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 3]
+          global soilTemperatureAt40cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 5]
+          global pressureHeadAt10cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 2]
+          global pressureHeadAt20cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 3]
+          global pressureHeadAt40cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 5]
+     #      println(pressureHeadAt40cm[aDay])
       catch e
         println("???ERROR in Grass.storeDeltaresData: ", e)
       end
@@ -2025,9 +2059,8 @@ module Grass
         global cropYield[day].dayofyear = day
         global cropYield[day].potentialEp = aMeteo.evapPenman
 
-#        read soil data
-        dataDeltares = readDeltaresData(day)
-        storeDeltaresData(dataDeltares, day)
+#       store soil data
+        storeDeltaresData(day)
 
 #        grassIsGrowing = true
 #        aMeteo.radiation = 7000.0
@@ -2038,9 +2071,9 @@ module Grass
 #         compute potential plant evaporation
           computePotentialPlantEvaporation(aMeteo, day)
 #         read data from Deltares
-          drz = -0.01 * cropYield[day-1].actual.rootingDepth
-          fMoisture = moistureFactor(aMeteo, drz, dataDeltares)
-          fTemperature = temperatureFactor(drz, dataDeltares)
+          drz = cropYield[day-1].actual.rootingDepth
+          fMoisture = moistureFactor(aMeteo, drz)
+          fTemperature = temperatureFactor(aMeteo, drz)
           actualPlantEvaporation(fMoisture, day)
 #          println(fMoisture, "   ", fTemperature)
 #         potential growth
@@ -2110,7 +2143,7 @@ module Grass
         p[4] = plot(legend=:none, xlabel="Datum", ylabel="Factor (-)", size=(750,500))
 #        p[4] = plot!(p[4], cropDate, factorMoisture, label="Moisture", color=:blue, linestyle=:solid)
         p[4] = plot!(p[4], cropDate, factorTemperature, label="Temperature", color=:red, linestyle=:solid)
-        savefig("/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/factor_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
+        savefig("/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Grass/factor_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
 
         p[5] = plot(legend=:topleft, xlabel="Date", ylabel="Epp (mm)", size=(750,500))
         p[5] = plot!(p[5], cropDate, eppPotential, label="P", color=:darkgoldenrod2, linestyle=:solid)
@@ -2125,17 +2158,17 @@ module Grass
         p[6] = plot!(p[6], cropDate, epaTemperature, label="T", color=:green2, linestyle=:solid)
 
         p[7] = plot(legend=:topleft, xlabel="Date", ylabel="Temperature (C)", size=(750,500))
-        p[7] = plot!(p[7], cropDate, soilTemperatureAt5cm, label = "5 cm", color=:darkred, linestyle=:solid)
+        p[7] = plot!(p[7], cropDate, soilTemperatureAt10cm, label = "10 cm", color=:darkred, linestyle=:solid)
         p[7] = plot!(p[7], cropDate, soilTemperatureAt20cm, label = "20 cm", color=:blue, linestyle=:solid)
         p[7] = plot!(p[7], cropDate, soilTemperatureAt40cm, label = "40 cm", color=:green2, linestyle=:solid)
 
         p[8] = plot(legend=:topleft, xlabel="Date", ylabel="Pressure head (cm)", size=(750,500))
-        p[8] = plot!(p[8], cropDate, pressureHeadAt5cm, label = "5 cm", color=:darkred, linestyle=:solid)
+        p[8] = plot!(p[8], cropDate, pressureHeadAt10cm, label = "10 cm", color=:darkred, linestyle=:solid)
         p[8] = plot!(p[8], cropDate, pressureHeadAt20cm, label = "20 cm", color=:blue, linestyle=:solid)
         p[8] = plot!(p[8], cropDate, pressureHeadAt40cm, label = "40 cm", color=:green2, linestyle=:solid)
         pAll = plot(p..., layout=(4,2), size=(1500,2000))
 
-        savefig("/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/cropyield_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
+        savefig("/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Grass/cropyield_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
 
         display(pAll)
 
@@ -2147,7 +2180,7 @@ module Grass
   end
 
   function storeOutput()
-    fileName = "/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/results_" * string(year) * "_" * string(profile) * "_" * string(position) * ".txt"
+    fileName = "/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Grass/results_" * string(year) * "_" * string(profile) * "_" * string(position) * ".txt"
     df = DateFormat("dd-u-yyyy HH:MM:SS.sss")
     df1 = DateFormat("dd-u-yyyy")
 
@@ -2169,6 +2202,7 @@ module Grass
         myString *= lpad(string(floor(Int64,cropYield[289].moisture.actualPlantEvaporation)),15," ")
         myString *= lpad(string(floor(Int64,cropYield[289].temperature.actualPlantEvaporation)),15," ")
         myString *= "\n"
+        global actualTranspiration = string(floor(Int64,cropYield[289].actual.actualPlantEvaporation))
 
         myString *= "First harvest       "
         s = "Unknown"
@@ -2187,6 +2221,7 @@ module Grass
           i+=1
           if cropYield[i].actual.mowed > 1.0
             s = lpad(Dates.format(cropYield[i].theDate, df1), 15, " ")
+            global firstMowingDate = Dates.format(cropYield[i].theDate, df1)
             break
           end
         end
@@ -2219,6 +2254,7 @@ module Grass
         myString *= lpad(string(floor(Int64,cropYield[289].moisture.mowed)),15," ")
         myString *= lpad(string(floor(Int64,cropYield[289].temperature.mowed)),15," ")
         myString *= "\n"
+        global harvested = string(floor(Int64,cropYield[289].actual.mowed))
 
         myString *= "Yield at 15 oct.     "
         myString *= lpad(string(floor(Int64,cropYield[289].potential.total.dead + cropYield[289].potential.total.living)),15," ")
@@ -2226,7 +2262,7 @@ module Grass
         myString *= lpad(string(floor(Int64,cropYield[289].moisture.total.dead + cropYield[289].moisture.total.living)),15," ")
         myString *= lpad(string(floor(Int64,cropYield[289].temperature.total.dead + cropYield[289].temperature.total.living)),15," ")
         myString *= "\n"
-
+        global leftAtField = string(floor(Int64,cropYield[289].actual.total.dead + cropYield[289].actual.total.living))
         outFile = open(fileName, "w")
         println(outFile, myString)
         close(outFile)

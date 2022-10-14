@@ -1,4 +1,5 @@
 module Potato
+# all depths in cm!!!!
   using Interpolations
   using Dates
   using OffsetArrays
@@ -7,8 +8,16 @@ module Potato
   using CSV
   using DataFrames
 
+  fixedEmergence = true
+
   Gauss3x = [0.1127017, 0.5000000, 0.8872983]
   Gauss3w = [0.2777778, 0.4444444, 0.2777778]
+
+  sensorDepth = [-0.1, -0.2, -0.3, -0.4, -0.5, -0.75, -1.0] # m
+  sensorDistance = [0.0, 1.0, 2.0, 5.0, 10.0] # m
+
+  plantingDepth = -0.2
+  plantingDay = 91
 
   CropFactorDvs = [0.0 1.0;
                    1.0 1.1;
@@ -18,8 +27,17 @@ module Potato
                    1.0 40.0;
                    2.0 50.0]
 
+  degDaysPlantingEmergence = 170.0
   degDaysEmergenceAnthesis = 150.0
   degDaysAnthesisMaturity = 1550.0
+
+  minTempEmergence = 3.0
+  maxTempEmergence = 18.0
+  minHeadEmergence = -500.0
+  maxHeadEmergence = -100.0
+  aEmergence = 203.0
+  bEmergence = 522.0
+  cEmergence = -432.0
 
   deltaTempSumAirTemp = [0.0 0.0;
                          2.0 0.0;
@@ -30,6 +48,8 @@ module Potato
   minCanopyResistance = 100.0
   canopyResistanceInterceptedWater = 0.0
 
+  dayOfEmergence = 0
+  initialRootDepth = 0.0
   initialTotalWeight = 75.0
   laiAtEmergence = 0.0589
   maxRelativeLaiIncrease = 0.012
@@ -39,14 +59,15 @@ module Potato
                          2.00 0.0015]
   specificPodArea = 0.0
   specificStemArea = 0.0
-  maxAgeOfLeaves = 37.0
+  maxAgeOfLeaves = 43.0
+#  maxAgeOfLeaves = 37.0
   baseTempLeafAgeing = 2.0
 
   kDif = 1.0
   kDir = 0.75
   eff = 0.45
 
-  AssimilationRateDvs = [0.00  30.00;
+  AssimilationRateDvs = [0.00  30.0;
                          1.57  30.0;
                          2.00  0.00]
 
@@ -110,8 +131,8 @@ module Potato
 
   RelativeDeathRateOfLeavesByWaterStress = 0.030
 
-  RootDepthRootWeight = [300.00   20.0;
-                         2500.00   40.0]
+  RootDepthRootWeight = [300.00   -0.20;
+                         2500.00   -0.40]
 
   RelativeRootDensityRelativeRootDepth = [0.0   1.000;
                                           0.1   0.741;
@@ -135,13 +156,26 @@ module Potato
   moistureLimitEvaporativeDemand = [1.0  -500.0;
                                     5.0  -300.0]
 
-  growthFactorTemperature = [5.0 0.1;
+  AmaxFactorSoilTemperature1 = [5.0 0.5;
+                            8.0 1.0;
                             15.0 1.0;
-                            20.0 1.0;
-                            25.0 0.1;
-                            30.0 0.05]
+                            30.0 0.5]
 
-  initialWeight = 1000.0
+  AmaxFactorSoilTemperature2 = [5.0 0.7;
+                                16.0 1.0;
+                                25.0 1.0;
+                                30.0 0.7;
+                                40.0 0.1]
+
+  DvsFactorSoilTemperature1 = [5.0 0.9;
+                               8.0 1.0;
+                               15.0 1.0;
+                               30.0 0.8]
+
+  DvsFactorSoilTemperature2 = [10.0 0.7;
+                               16.0 1.0;
+                               25.0 1.0;
+                               30.0 0.7]
 
   maximumRootingDepth = 50.0
   maximumRootWeight = 4000.0
@@ -149,28 +183,8 @@ module Potato
   specificStemArea = 0.0004
 
 
-
-  maxAgeOfLeaves = 30
-  grassIsGrowing = false
-  temperatureSum = 0.0
-  lastDayMowedPotential = 0
-  lastDayMowedActual = 0
-  lastDayMowedMoisture = 0
-  lastDayMowedTemperature = 0
-  lastAllowedMowingDay = 289
-  delayInPotentialRegrowth = 0
-  delayInActualRegrowth = 0
-  delayInMoistureRegrowth = 0
-  delayInTemperatureRegrowth = 0
-  tresholdForMowing = 4000.0
-  tresholdForLastMowing = 2750.0
-
   latitude = 51.962
   longitude = 4.447
-
-  kdif = 0.60
-  kdir = 0.75
-  eff  = 0.50
 
   rgrlai = 0.007
   relmf = 0.9
@@ -179,51 +193,64 @@ module Potato
   position = 0
   profile = 0
 
+  isPlanted = false
+  cropIsGrowing = false
+
+  tempSumEmergence = 0.0
+
   cropYield = OffsetArray{Main.Control.Types.CropYield}
-  cropDate = Array{Dates.Date}(undef,366)
-  cropYieldPotentialLiving = Array{Float64}(undef,366)
-  cropYieldActualLiving = Array{Float64}(undef,366)
-  cropYieldMoistureLiving = Array{Float64}(undef,366)
-  cropYieldTemperatureLiving = Array{Float64}(undef,366)
-  mowedActual = Array{Float64}(undef,366)
-  mowedPotential = Array{Float64}(undef,366)
-  mowedTemperature = Array{Float64}(undef,366)
-  mowedMoisture = Array{Float64}(undef,366)
-  laiActual = Array{Float64}(undef,366)
-  laiPotential = Array{Float64}(undef,366)
-  laiMoisture = Array{Float64}(undef,366)
-  laiTemperature = Array{Float64}(undef,366)
-  factorMoisture = Array{Float64}(undef,366)
-  factorTemperature = Array{Float64}(undef,366)
-  eppActual = Array{Float64}(undef,366)
-  eppPotential = Array{Float64}(undef,366)
-  eppMoisture = Array{Float64}(undef,366)
-  eppTemperature = Array{Float64}(undef,366)
-  epaActual = Array{Float64}(undef,366)
-  epaPotential = Array{Float64}(undef,366)
-  epaMoisture = Array{Float64}(undef,366)
-  epaTemperature = Array{Float64}(undef,366)
-  soilTemperatureAt5cm = Array{Float64}(undef,366)
-  soilTemperatureAt20cm = Array{Float64}(undef,366)
-  soilTemperatureAt40cm = Array{Float64}(undef,366)
-  pressureHeadAt5cm = Array{Float64}(undef,366)
-  pressureHeadAt20cm = Array{Float64}(undef,366)
-  pressureHeadAt40cm = Array{Float64}(undef,366)
+  cropDate = Array{Dates.Date}(undef,365)
+  cropYieldPotentialLiving = Array{Float64}(undef,365)
+  cropYieldActualLiving = Array{Float64}(undef,365)
+  cropYieldMoistureLiving = Array{Float64}(undef,365)
+  cropYieldTemperatureLiving = Array{Float64}(undef,365)
+  laiActual = Array{Float64}(undef,365)
+  laiPotential = Array{Float64}(undef,365)
+  laiMoisture = Array{Float64}(undef,365)
+  laiTemperature = Array{Float64}(undef,365)
+  factorMoisture = Array{Float64}(undef,365)
+  factorTemperature = Array{Float64}(undef,365)
+  eppActual = Array{Float64}(undef,365)
+  eppPotential = Array{Float64}(undef,365)
+  eppMoisture = Array{Float64}(undef,365)
+  eppTemperature = Array{Float64}(undef,365)
+  epaActual = Array{Float64}(undef,365)
+  epaPotential = Array{Float64}(undef,365)
+  epaMoisture = Array{Float64}(undef,365)
+  epaTemperature = Array{Float64}(undef,365)
+  soilTemperatureAt10cm = Array{Float64}(undef,365)
+  soilTemperatureAt20cm = Array{Float64}(undef,365)
+  soilTemperatureAt30cm = Array{Float64}(undef,365)
+  soilTemperatureAt40cm = Array{Float64}(undef,365)
+  pressureHeadAt10cm = Array{Float64}(undef,365)
+  pressureHeadAt20cm = Array{Float64}(undef,365)
+  pressureHeadAt30cm = Array{Float64}(undef,365)
+  pressureHeadAt40cm = Array{Float64}(undef,365)
 
-  mowingDayActual = Array{Int64}(undef,1)
-  mowingDayPotential = Array{Int64}(undef,1)
-  mowingDayMoisture = Array{Int64}(undef,1)
-  mowingDayTemperature = Array{Int64}(undef,1)
+  simulatedHead = undef
+  simulatedTemperature = undef
 
-  nMowingDaysActual = 0
-  nMowingDaysPotential = 0
-  nmowingDaysMoisture = 0
-  nMowingDaysTemperature = 0
+  actualYield = 0.0
+  actualDateMature = ""
+  actualDateEmergence = ""
+  actualTranspiration = 0.0
 
-  gettingMowingDaysActual = true
-  gettingMowingDaysPotential = true
-  gettingMowingDaysTemperature = true
-  gettingMowingDaysMoisture = true
+  moistureYield = 0.0
+  temperatureYield = 0.0
+  potentialYield = 0.0
+
+  function setSimulatedData(aHead :: DataFrame, aTemp :: DataFrame)
+    try
+      try
+        global simulatedHead = aHead
+        global simulatedTemperature = aTemp
+      catch e
+        println("???ERROR in Potato.setSimulatedData: ",e)
+      end
+    finally
+#      println(simulatedHead[180,2])
+    end
+  end
 
   function interpolate(aData :: Array{Float64}, aX :: Float64)
     y = -999.0
@@ -247,45 +274,17 @@ module Potato
     return y
   end
 
-  function resetMowingDays()
-    try
-      try
-        resize!(mowingDayActual, 1)
-        resize!(mowingDayPotential, 1)
-        resize!(mowingDayTemperature, 1)
-        resize!(mowingDayMoisture, 1)
-        global nMowingDaysPotential = 0
-        global nMowingDaysActual = 0
-        global nMowingDaysMoisture = 0
-        global nMowingDaysTemperature = 0
-        global gettingMowingDaysActual = true
-        global gettingMowingDaysPotential = true
-        global gettingMowingDaysMoisture = true
-        global gettingMowingDaysTemperature = true
-      catch e
-        println("???ERROR in clearMowingDays:", e)
-      end
-    finally
-    end
-  end
-
-  function stopGettingMowingDates()
-    try
-      try
-        global gettingMowingDaysActual = false
-        global gettingMowingDaysPotential = false
-        global gettingMowingDaysMoisture = false
-        global gettingMowingDaysTemperature = false
-      catch e
-        println("???ERROR in stopGettingMowingDates:", e)
-      end
-    finally
-    end
-  end
-
   function initialize(aYear :: Int64, aProfile :: Int64, aPosition :: Int64)
     try
       try
+        global cropIsGrowing = false
+        global isPlanted = false
+        if fixedEmergence
+          global dayOfEmergence = 115
+        else
+          global dayOfEmergence = -1
+        end
+        global tempSumEmergence = 0.0
         global year = aYear
         global profile = aProfile
         global position = aPosition
@@ -308,7 +307,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          actual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          actual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -316,7 +315,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          potential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          potential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -324,7 +323,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          moisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          moisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -332,7 +331,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          temperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          temperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -340,7 +339,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyPotential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyPotential = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -348,7 +347,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyActual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyActual = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -356,7 +355,7 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyMoisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyMoisture = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           total = Main.Control.Types.Stage(0.0,0.0)
           leaves = Main.Control.Types.Stage(0.0,0.0)
@@ -364,79 +363,88 @@ module Potato
           storage = Main.Control.Types.Stage(0.0,0.0)
           shoot = Main.Control.Types.Stage(0.0,0.0)
           roots = Main.Control.Types.Stage(0.0,0.0)
-          dailyTemperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
+          dailyTemperature = Main.Control.Types.Plant(total,leaves,stem,storage,shoot,roots,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0)
 
           global cropYield[i] = Main.Control.Types.CropYield(d, i, 0.0, 0.0, dailyPotential, dailyActual,
             dailyMoisture, dailyTemperature, potential, actual, moisture, temperature)
           d += Dates.Day(1)
         end
+    catch e
+      println("???ERROR in Potato.initialize: ",e)
+    end
+    finally
+    end
+  end
 
-        fr = interpolate(GrowthPartToRootsDaynumber, 0.0)
-        fl = interpolate(GrowthPartToLeavesDaynumber, 0.0)
-        fs = interpolate(GrowthPartToStemsDaynumber, 0.0)
+  function setDataForEmergence()
+    try
+      try
+        fr = interpolate(GrowthPartToRootsDvs, 0.0)
+        fl = interpolate(GrowthPartToLeavesDvs, 0.0)
+        fs = interpolate(GrowthPartToStemsDvs, 0.0)
 
-        global cropYield[0].potential.roots.living = fr * initialWeight
-        global cropYield[0].potential.leaves.living = (1.0 - fr) * fl * initialWeight
-        global cropYield[0].potential.stem.living = (1.0 - fr) * fs * initialWeight
-        global cropYield[0].potential.shoot.living = (1.0 - fr) * (1.0 - fl - fs) * initialWeight
-        global cropYield[0].potential.total.dead = 0.0
-        global cropYield[0].potential.roots.dead = 0.0
-        global cropYield[0].potential.leaves.dead = 0.0
-        global cropYield[0].potential.stem.dead = 0.0
-        global cropYield[0].potential.shoot.dead = 0.0
-        global cropYield[0].potential.rootingDepth = interpolate(RootDepthRootWeight,cropYield[0].potential.roots.living)
-        global cropYield[0].potential.lai = cropYield[0].potential.leaves.living * interpolate(SpecificLeafAreaDaynumber, 0.0)
-        global cropYield[0].potential.laiExp = cropYield[0].potential.lai
-        global cropYield[0].potential.total.living = cropYield[0].potential.leaves.living + cropYield[0].potential.stem.living
+        global cropYield[dayOfEmergence].potential.leaves.living = (1.0 - fr) * fl * initialTotalWeight
+        global cropYield[dayOfEmergence].potential.stem.living = (1.0 - fr) * fs * initialTotalWeight
+        global cropYield[dayOfEmergence].potential.shoot.living = (1.0 - fr) * (1.0 - fl - fs) * initialTotalWeight
+        global cropYield[dayOfEmergence].potential.total.dead = 0.0
+        global cropYield[dayOfEmergence].potential.roots.dead = 0.0
+        global cropYield[dayOfEmergence].potential.leaves.dead = 0.0
+        global cropYield[dayOfEmergence].potential.stem.dead = 0.0
+        global cropYield[dayOfEmergence].potential.shoot.dead = 0.0
+        global cropYield[dayOfEmergence].potential.rootingDepth = interpolate(RootDepthRootWeight,cropYield[dayOfEmergence].potential.roots.living)
+        global cropYield[dayOfEmergence].potential.lai = cropYield[dayOfEmergence].potential.leaves.living * interpolate(SpecificLeafAreaDvs, 0.0)
+        global cropYield[dayOfEmergence].potential.laiExp = cropYield[dayOfEmergence].potential.lai
+        global cropYield[dayOfEmergence].potential.total.living = cropYield[dayOfEmergence].potential.leaves.living + cropYield[dayOfEmergence].potential.stem.living
 
-        global cropYield[0].actual.total.living = cropYield[0].potential.total.living
-        global cropYield[0].actual.roots.living = cropYield[0].potential.roots.living
-        global cropYield[0].actual.leaves.living = cropYield[0].potential.leaves.living
-        global cropYield[0].actual.stem.living = cropYield[0].potential.stem.living
-        global cropYield[0].actual.shoot.living = cropYield[0].potential.shoot.living
-        global cropYield[0].actual.total.dead = cropYield[0].potential.total.dead
-        global cropYield[0].actual.roots.dead = cropYield[0].potential.roots.dead
-        global cropYield[0].actual.leaves.dead = cropYield[0].potential.leaves.dead
-        global cropYield[0].actual.stem.dead = cropYield[0].potential.stem.dead
-        global cropYield[0].actual.shoot.dead = cropYield[0].potential.shoot.dead
-        global cropYield[0].actual.rootingDepth = cropYield[0].potential.rootingDepth
-        global cropYield[0].actual.lai = cropYield[0].potential.lai
-        global cropYield[0].actual.laiExp = cropYield[0].potential.laiExp
+        global cropYield[dayOfEmergence].actual.total.living = cropYield[dayOfEmergence].potential.total.living
+        global cropYield[dayOfEmergence].potential.roots.living = fr * initialTotalWeight
+        global cropYield[dayOfEmergence].actual.roots.living = cropYield[dayOfEmergence].potential.roots.living
+        global cropYield[dayOfEmergence].actual.leaves.living = cropYield[dayOfEmergence].potential.leaves.living
+        global cropYield[dayOfEmergence].actual.stem.living = cropYield[dayOfEmergence].potential.stem.living
+        global cropYield[dayOfEmergence].actual.shoot.living = cropYield[dayOfEmergence].potential.shoot.living
+        global cropYield[dayOfEmergence].actual.total.dead = cropYield[dayOfEmergence].potential.total.dead
+        global cropYield[dayOfEmergence].actual.roots.dead = cropYield[dayOfEmergence].potential.roots.dead
+        global cropYield[dayOfEmergence].actual.leaves.dead = cropYield[dayOfEmergence].potential.leaves.dead
+        global cropYield[dayOfEmergence].actual.stem.dead = cropYield[dayOfEmergence].potential.stem.dead
+        global cropYield[dayOfEmergence].actual.shoot.dead = cropYield[dayOfEmergence].potential.shoot.dead
+        global cropYield[dayOfEmergence].actual.rootingDepth = cropYield[dayOfEmergence].potential.rootingDepth
+        global cropYield[dayOfEmergence].actual.lai = cropYield[dayOfEmergence].potential.lai
+        global cropYield[dayOfEmergence].actual.laiExp = cropYield[dayOfEmergence].potential.laiExp
 
-        global cropYield[0].moisture.total.living = cropYield[0].potential.total.living
-        global cropYield[0].moisture.roots.living = cropYield[0].potential.roots.living
-        global cropYield[0].moisture.leaves.living = cropYield[0].potential.leaves.living
-        global cropYield[0].moisture.stem.living = cropYield[0].potential.stem.living
-        global cropYield[0].moisture.shoot.living = cropYield[0].potential.shoot.living
-        global cropYield[0].moisture.total.dead = cropYield[0].potential.total.dead
-        global cropYield[0].moisture.roots.dead = cropYield[0].potential.roots.dead
-        global cropYield[0].moisture.leaves.dead = cropYield[0].potential.leaves.dead
-        global cropYield[0].moisture.stem.dead = cropYield[0].potential.stem.dead
-        global cropYield[0].moisture.shoot.dead = cropYield[0].potential.shoot.dead
-        global cropYield[0].moisture.rootingDepth = cropYield[0].potential.rootingDepth
-        global cropYield[0].moisture.lai = cropYield[0].potential.lai
-        global cropYield[0].moisture.laiExp = cropYield[0].potential.laiExp
+        global cropYield[dayOfEmergence].moisture.total.living = cropYield[dayOfEmergence].potential.total.living
+        global cropYield[dayOfEmergence].moisture.roots.living = cropYield[dayOfEmergence].potential.roots.living
+        global cropYield[dayOfEmergence].moisture.leaves.living = cropYield[dayOfEmergence].potential.leaves.living
+        global cropYield[dayOfEmergence].moisture.stem.living = cropYield[dayOfEmergence].potential.stem.living
+        global cropYield[dayOfEmergence].moisture.shoot.living = cropYield[dayOfEmergence].potential.shoot.living
+        global cropYield[dayOfEmergence].moisture.total.dead = cropYield[dayOfEmergence].potential.total.dead
+        global cropYield[dayOfEmergence].moisture.roots.dead = cropYield[dayOfEmergence].potential.roots.dead
+        global cropYield[dayOfEmergence].moisture.leaves.dead = cropYield[dayOfEmergence].potential.leaves.dead
+        global cropYield[dayOfEmergence].moisture.stem.dead = cropYield[dayOfEmergence].potential.stem.dead
+        global cropYield[dayOfEmergence].moisture.shoot.dead = cropYield[dayOfEmergence].potential.shoot.dead
+        global cropYield[dayOfEmergence].moisture.rootingDepth = cropYield[dayOfEmergence].potential.rootingDepth
+        global cropYield[dayOfEmergence].moisture.lai = cropYield[dayOfEmergence].potential.lai
+        global cropYield[dayOfEmergence].moisture.laiExp = cropYield[dayOfEmergence].potential.laiExp
 
-        global cropYield[0].temperature.total.living = cropYield[0].potential.total.living
-        global cropYield[0].temperature.roots.living = cropYield[0].potential.roots.living
-        global cropYield[0].temperature.leaves.living = cropYield[0].potential.leaves.living
-        global cropYield[0].temperature.stem.living = cropYield[0].potential.stem.living
-        global cropYield[0].temperature.shoot.living = cropYield[0].potential.shoot.living
-        global cropYield[0].temperature.total.dead = cropYield[0].potential.total.dead
-        global cropYield[0].temperature.roots.dead = cropYield[0].potential.roots.dead
-        global cropYield[0].temperature.leaves.dead = cropYield[0].potential.leaves.dead
-        global cropYield[0].temperature.stem.dead = cropYield[0].potential.stem.dead
-        global cropYield[0].temperature.shoot.dead = cropYield[0].potential.shoot.dead
-        global cropYield[0].temperature.rootingDepth = cropYield[0].potential.rootingDepth
-        global cropYield[0].temperature.lai = cropYield[0].potential.lai
-        global cropYield[0].temperature.laiExp = cropYield[0].potential.laiExp
+        global cropYield[dayOfEmergence].temperature.total.living = cropYield[dayOfEmergence].potential.total.living
+        global cropYield[dayOfEmergence].temperature.roots.living = cropYield[dayOfEmergence].potential.roots.living
+        global cropYield[dayOfEmergence].temperature.leaves.living = cropYield[dayOfEmergence].potential.leaves.living
+        global cropYield[dayOfEmergence].temperature.stem.living = cropYield[dayOfEmergence].potential.stem.living
+        global cropYield[dayOfEmergence].temperature.shoot.living = cropYield[dayOfEmergence].potential.shoot.living
+        global cropYield[dayOfEmergence].temperature.total.dead = cropYield[dayOfEmergence].potential.total.dead
+        global cropYield[dayOfEmergence].temperature.roots.dead = cropYield[dayOfEmergence].potential.roots.dead
+        global cropYield[dayOfEmergence].temperature.leaves.dead = cropYield[dayOfEmergence].potential.leaves.dead
+        global cropYield[dayOfEmergence].temperature.stem.dead = cropYield[dayOfEmergence].potential.stem.dead
+        global cropYield[dayOfEmergence].temperature.shoot.dead = cropYield[dayOfEmergence].potential.shoot.dead
+        global cropYield[dayOfEmergence].temperature.rootingDepth = cropYield[dayOfEmergence].potential.rootingDepth
+        global cropYield[dayOfEmergence].temperature.lai = cropYield[dayOfEmergence].potential.lai
+        global cropYield[dayOfEmergence].temperature.laiExp = cropYield[dayOfEmergence].potential.laiExp
 
-#        println(cropYield[0].actualWeight)
+        computeRootDepths(dayOfEmergence)
 
-        global grassIsGrowing = false
-        global temperatureSum = 0.0
+#        println(cropYield[dayOfEmergence].actual.total.living)
+
       catch e
-        println("???ERROR in Grass.initialize: ",e)
+        println("???ERROR in Potato.setDataForEmergence: ",e)
       end
     finally
     end
@@ -459,6 +467,8 @@ module Potato
         global cropYield[d].potential.rootingDepth = cropYield[d-1].potential.rootingDepth
         global cropYield[d].potential.lai = cropYield[d-1].potential.lai
         global cropYield[d].potential.laiExp = cropYield[d-1].potential.laiExp
+        global cropYield[d].potential.dvs = cropYield[d-1].potential.dvs
+        global cropYield[d].potential.tempSum = cropYield[d-1].potential.tempSum
 
         global cropYield[d].dailyPotentialGrowth.total.living = cropYield[d-1].dailyPotentialGrowth.total.living
         global cropYield[d].dailyPotentialGrowth.roots.living = cropYield[d-1].dailyPotentialGrowth.roots.living
@@ -473,8 +483,11 @@ module Potato
         global cropYield[d].dailyPotentialGrowth.rootingDepth = cropYield[d-1].dailyPotentialGrowth.rootingDepth
         global cropYield[d].dailyPotentialGrowth.lai = cropYield[d-1].dailyPotentialGrowth.lai
         global cropYield[d].dailyPotentialGrowth.laiExp = cropYield[d-1].dailyPotentialGrowth.laiExp
+        global cropYield[d].dailyPotentialGrowth.dvs = cropYield[d-1].dailyPotentialGrowth.dvs
+        global cropYield[d].dailyPotentialGrowth.tempSum = cropYield[d-1].dailyPotentialGrowth.tempSum
+
       catch e
-        println("????ERROR in Grass.copyPotentialValues: ", e)
+        println("????ERROR in Potato.copyPotentialValues: ", e)
       end
     finally
     end
@@ -497,6 +510,8 @@ module Potato
         global cropYield[d].actual.rootingDepth = cropYield[d-1].actual.rootingDepth
         global cropYield[d].actual.lai = cropYield[d-1].actual.lai
         global cropYield[d].actual.laiExp = cropYield[d-1].actual.laiExp
+        global cropYield[d].actual.dvs = cropYield[d-1].actual.dvs
+        global cropYield[d].actual.tempSum = cropYield[d-1].actual.tempSum
 
         global cropYield[d].dailyActualGrowth.total.living = cropYield[d-1].dailyPotentialGrowth.total.living
         global cropYield[d].dailyActualGrowth.roots.living = cropYield[d-1].dailyActualGrowth.roots.living
@@ -511,8 +526,10 @@ module Potato
         global cropYield[d].dailyActualGrowth.rootingDepth = cropYield[d-1].dailyActualGrowth.rootingDepth
         global cropYield[d].dailyActualGrowth.lai = cropYield[d-1].dailyActualGrowth.lai
         global cropYield[d].dailyActualGrowth.laiExp = cropYield[d-1].dailyActualGrowth.laiExp
+        global cropYield[d].dailyActualGrowth.dvs = cropYield[d-1].dailyActualGrowth.dvs
+        global cropYield[d].dailyActualGrowth.tempSum = cropYield[d-1].dailyActualGrowth.tempSum
       catch e
-        println("????ERROR in Grass.copyActualValues: ", e)
+        println("????ERROR in Potato.copyActualValues: ", e)
       end
     finally
     end
@@ -535,6 +552,8 @@ module Potato
         global cropYield[d].moisture.rootingDepth = cropYield[d-1].moisture.rootingDepth
         global cropYield[d].moisture.lai = cropYield[d-1].moisture.lai
         global cropYield[d].moisture.laiExp = cropYield[d-1].moisture.laiExp
+        global cropYield[d].moisture.dvs = cropYield[d-1].moisture.dvs
+        global cropYield[d].moisture.tempSum = cropYield[d-1].moisture.tempSum
 
         global cropYield[d].dailyMoistureGrowth.total.living = cropYield[d-1].dailyPotentialGrowth.total.living
         global cropYield[d].dailyMoistureGrowth.roots.living = cropYield[d-1].dailyMoistureGrowth.roots.living
@@ -549,8 +568,10 @@ module Potato
         global cropYield[d].dailyMoistureGrowth.rootingDepth = cropYield[d-1].dailyMoistureGrowth.rootingDepth
         global cropYield[d].dailyMoistureGrowth.lai = cropYield[d-1].dailyMoistureGrowth.lai
         global cropYield[d].dailyMoistureGrowth.laiExp = cropYield[d-1].dailyMoistureGrowth.laiExp
+        global cropYield[d].dailyMoistureGrowth.dvs = cropYield[d-1].dailyMoistureGrowth.dvs
+        global cropYield[d].dailyMoistureGrowth.tempSum = cropYield[d-1].dailyMoistureGrowth.tempSum
       catch e
-        println("????ERROR in Grass.copyMoistureValues: ", e)
+        println("????ERROR in Potato.copyMoistureValues: ", e)
       end
     finally
     end
@@ -573,6 +594,8 @@ module Potato
         global cropYield[d].temperature.rootingDepth = cropYield[d-1].temperature.rootingDepth
         global cropYield[d].temperature.lai = cropYield[d-1].temperature.lai
         global cropYield[d].temperature.laiExp = cropYield[d-1].temperature.laiExp
+        global cropYield[d].temperature.dvs = cropYield[d-1].temperature.dvs
+        global cropYield[d].temperature.tempSum = cropYield[d-1].temperature.tempSum
 
         global cropYield[d].dailyTemperatureGrowth.total.living = cropYield[d-1].dailyPotentialGrowth.total.living
         global cropYield[d].dailyTemperatureGrowth.roots.living = cropYield[d-1].dailyTemperatureGrowth.roots.living
@@ -587,1071 +610,717 @@ module Potato
         global cropYield[d].dailyTemperatureGrowth.rootingDepth = cropYield[d-1].dailyTemperatureGrowth.rootingDepth
         global cropYield[d].dailyTemperatureGrowth.lai = cropYield[d-1].dailyTemperatureGrowth.lai
         global cropYield[d].dailyTemperatureGrowth.laiExp = cropYield[d-1].dailyTemperatureGrowth.laiExp
+        global cropYield[d].dailyTemperatureGrowth.dvs = cropYield[d-1].dailyTemperatureGrowth.dvs
+        global cropYield[d].dailyTemperatureGrowth.tempSum = cropYield[d-1].dailyTemperatureGrowth.tempSum
       catch e
-        println("????ERROR in Grass.copyTemperatureValues: ", e)
+        println("????ERROR in Potato.copyTemperatureValues: ", e)
       end
     finally
     end
   end
 
-  function beforeGrassGrowth(aMeteo :: Main.Control.Types.Meteo)
+  function beforePlanting(aMeteo :: Main.Control.Types.Meteo)
     try
       try
         d = aMeteo.dayofyear
-        poentialEp = aMeteo.evapPenman
+        potentialEp = aMeteo.evapPenman
         actualEp = 0.0
-
-        copyPotentialValues(d)
-        copyActualValues(d)
-        copyMoistureValues(d)
-        copyTemperatureValues(d)
-        global temperatureSum += max(aMeteo.aveTemp, 0.0)
-        if temperatureSum > 200.0
-          global grassIsGrowing = true
-          global lastDayMowedActual = d
-          global lastDayMowedPotential = d
-          global lastDayMowedMoisture = d
-          global lastDayMowedTemperature = d
+        if d == plantingDay
+          global isPlanted = true
         end
       catch e
-        println("???ERROR in Grass.beforeGrassGrowth: ",e)
+        println("???ERROR in Potato.beforePlanting: ", e)
       end
     finally
     end
   end
 
-  function potentialGrassGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64)
+  function computeTemperatureSum(aMeteo :: Main.Control.Types.Meteo)
     try
       try
+        # soil temperature and head at planting depth
+        dist = 99999.0
+        pos = -1
+        for i in 1:size(sensorDepth,1)
+          d = abs(plantingDepth - sensorDepth[i])
+          if d < dist
+            dist = d
+            pos = i
+          end
+        end
+        colOfTable = (position-1) * size(sensorDepth,1) + pos + 1
+        t = simulatedTemperature[aMeteo.dayofyear,colOfTable]
+        head = 0.0
+        for i in 1:pos
+          head  += simulatedHead[aMeteo.dayofyear, (position-1)*size(sensorDepth,1)+i+1]
+        end
+        head /= pos
+
+        corrSum = degDaysPlantingEmergence
+        if head < minHeadEmergence
+          corrSum = aEmergence * log10(abs(head)) + cEmergence
+        end
+        if head > maxHeadEmergence
+          corrSum = -1.0 * aEmergence * log10(abs(head)) + bEmergence
+        end
+
+        if t > minTempEmergence
+          if t < maxTempEmergence
+            global tempSumEmergence += (degDaysPlantingEmergence / corrSum) * (t - minTempEmergence)
+          else
+            global tempSumEmergence += (degDaysPlantingEmergence / corrSum) * (maxTempEmergence - minTempEmergence)
+          end
+        end
+#        println(tempSumEmergence)
+        if tempSumEmergence >= degDaysPlantingEmergence
+          global dayOfEmergence = aMeteo.dayofyear
+        end
+      catch e
+        println("???ERROR in Potato.computeTemperatureSum: ", e)
+      end
+    finally
+    end
+  end
+
+  function beforeCropGrowth(aMeteo :: Main.Control.Types.Meteo)
+    try
+      try
+        d = aMeteo.dayofyear
+        potentialEp = aMeteo.evapPenman
+        actualEp = 0.0
+#        global temperatureSum += max(aMeteo.aveTemp, 0.0)
+        if !fixedEmergence
+          computeTemperatureSum(aMeteo)
+        end
+        if d == dayOfEmergence
+          setDataForEmergence()
+          global cropIsGrowing = true
+        end
+      catch e
+        println("???ERROR in Potato.beforeCropGrowth: ",e)
+      end
+    finally
+    end
+  end
+
+  function potentialCropGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64)
+    try
+      try
+
         fMoisture = 1.0
         fTemperature = 1.0
-        mowed = 0.0
 
-        if aDay <= lastDayMowedPotential + delayInPotentialRegrowth
-          copyPotentialValues(aDay)
+        t =convert(Float64, aDay)
+        avrad = 1000.0 * aMeteo.radiation
+        scv = 0.2
+
+#       Declination and solar constant for this day
+        declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
+        solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
+
+#       calculation of daylength from intermediate variables
+#       SINLD, COSLD and AOB
+        sinld = sind(latitude)*sin(declination)
+        cosld = cosd(latitude)*cos(declination)
+        aob = sinld/cosld
+
+#       Calculate solution for base=0 degrees
+        if abs(aob) <= 1.0
+          daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
+#         integrals of sine of solar height
+          dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
+          dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
         else
-          t =convert(Float64, aDay)
-          avrad = 1000.0 * aMeteo.radiation
-          scv = 0.2
-
-#         Declination and solar constant for this day
-          declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
-          solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
-
-#         calculation of daylength from intermediate variables
-#         SINLD, COSLD and AOB
-          sinld = sind(latitude)*sin(declination)
-          cosld = cosd(latitude)*cos(declination)
-          aob = sinld/cosld
-
-#         Calculate solution for base=0 degrees
-          if abs(aob) <= 1.0
-            daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
-          else
-            if aob > 1.0
-              daylength = 24.0
-            end
-            if aob < 1.0
-              daylength =  0.0
-            end
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
+          if aob > 1.0
+             daylength = 24.0
           end
-
-#         Calculate solution for base =-4 (ANGLE) degrees
-          angle = -4.0
-          aob_corr = (-sind(angle) + sinld)/cosld
-          if abs(aob_corr) <= 1.0
-            daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
-          else
-            if aob_corr > 1.0
-              daylp = 24.0
-            end
-            if aob_corr < -1.0
-              daylp =  0.0
-            end
+          if aob < 1.0
+            daylength =  0.0
           end
+#         integrals of sine of solar height
+          dsinb  = 3600.0 * (daylength * sinld)
+          dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
+        end
 
-#         extraterrestrial radiation and atmospheric transmission
-          angot  = solarConstant * dsinb
-#         Check for daylength=0 as in that case the angot radiation is 0 as well
-          atmtr = 0.0
-          if daylength > 0.0
-            atmtr = avrad / angot
+#       Calculate solution for base =-4 (ANGLE) degrees
+        angle = -4.0
+        aob_corr = (-sind(angle) + sinld)/cosld
+        if abs(aob_corr) <= 1.0
+          daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
+         else
+          if aob_corr > 1.0
+             daylp = 24.0
           end
-
-#         estimate fraction diffuse irradiation
-          frdif = 0.0
-          if atmtr > 0.75
-            frdif = 0.23
+          if aob_corr < -1.0
+            daylp =  0.0
           end
-          if atmtr < 0.75 && atmtr > 0.35
-            frdif = 1.33 - 1.46 * atmtr
-          end
-          if atmtr <= 0.35 && atmtr > 0.07
-            frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
-          end
-          if atmtr <= 0.07
-            frdif = 1.0
-          end
-          difpp = frdif * atmtr * 0.5 * solarConstant
+        end
 
-          amax = interpolate(AssimilationRateDayNumber,t) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
+#       extraterrestrial radiation and atmospheric transmission
+        angot  = solarConstant * dsinb
+#       Check for daylength=0 as in that case the angot radiation is 0 as well
+        atmtr = 0.0
+        if daylength > 0.0
+          atmtr = avrad / angot
+        end
 
-#         potential growth
+#       estimate fraction diffuse irradiation
+        frdif = 0.0
+        if atmtr > 0.75
+          frdif = 0.23
+        end
+        if atmtr < 0.75 && atmtr > 0.35
+          frdif = 1.33 - 1.46 * atmtr
+        end
+        if atmtr <= 0.35 && atmtr > 0.07
+          frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
+        end
+        if atmtr <= 0.07
+          frdif = 1.0
+        end
+        difpp = frdif * atmtr * 0.5 * solarConstant
 
-#          cropYield[aDay-1].potential.lai = 5.0
-          dtga  = 0.0
-          if amax > 0.0 && cropYield[aDay-1].potential.lai > 0.0
-            for i in 1:3
-              hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
-              sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
-              par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
-              pardif = min(par, sinb * difpp)
-              pardir = par - pardif
+        amax = interpolate(AssimilationRateDvs,cropYield[aDay].potential.dvs) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
 
-#             extinction coefficients KDIF,KDIRBL,KDIRT, start of assim
-              refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
-              refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
-              kdirbl = (0.5 / sinb) * kdif / (0.8 * sqrt(1.0 - scv))
-              kdirt  = kdirbl * sqrt(1.0 - scv)
+#       potential growth
+        dtga  = 0.0
+        if amax > 0.0 && cropYield[aDay-1].potential.lai > 0.0
+          for i in 1:3
+            hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
+            sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
+            par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
+            pardif = min(par, sinb * difpp)
+            pardir = par - pardif
 
-#             three-point Gaussian integration over LAI
-              fgros  = 0.0
-              for j in 1:3
-                laic   = cropYield[aDay-1].potential.lai * Gauss3x[j]
-#               absorbed diffuse radiation (VISDF),light from direct
-#               origine (VIST) and direct light(VISD)
-                visdf  = (1.0 - refs) * pardif * kdif * exp(-kdif * laic)
-                vist   = (1.0 - refs) * pardir * kdirt * exp(-kdirt * laic)
-                visd   = (1.0 - scv) * pardir * kdirbl * exp(-kdirbl*laic)
-#               absorbed flux in W/m2 for shaded leaves and assimilation
-                visshd = visdf + vist - visd
-                fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
-#               direct light absorbed by leaves perpendicular on direct
-#               beam and assimilation of sunlit leaf area
-                vispp  = (1.0 - scv) * pardir / sinb
-                fgrsun = fgrsh
-                if vispp > 0.0
-                  fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
-                end
-#               fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
-                fslla  = exp(-kdirbl * laic)
-                fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
-#               integration
-                fgros  += fgl * Gauss3w[j]
+#           extinction coefficients kDif,kDirBL,kDirT, start of assim
+            refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
+            refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
+            kDirbl = (0.5 / sinb) * kDif / (0.8 * sqrt(1.0 - scv))
+            kDirt  = kDirbl * sqrt(1.0 - scv)
+
+#           three-point Gaussian integration over LAI
+            fgros  = 0.0
+            for j in 1:3
+              laic   = cropYield[aDay-1].potential.lai * Gauss3x[j]
+#             absorbed diffuse radiation (VISDF),light from direct
+#             origine (VIST) and direct light(VISD)
+              visdf  = (1.0 - refs) * pardif * kDif * exp(-kDif * laic)
+              vist   = (1.0 - refs) * pardir * kDirt * exp(-kDirt * laic)
+              visd   = (1.0 - scv) * pardir * kDirbl * exp(-kDirbl*laic)
+#             absorbed flux in W/m2 for shaded leaves and assimilation
+              visshd = visdf + vist - visd
+              fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
+#             direct light absorbed by leaves perpendicular on direct
+#             beam and assimilation of sunlit leaf area
+              vispp  = (1.0 - scv) * pardir / sinb
+              fgrsun = fgrsh
+              if vispp > 0.0
+                fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
               end
-              fgros  *=  cropYield[aDay-1].potential.lai
-#             end of assim
-              dtga += fgros * Gauss3w[i]
+#             fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
+              fslla  = exp(-kDirbl * laic)
+              fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
+#             integration
+              fgros  += fgl * Gauss3w[j]
             end
-            dtga = dtga * daylength
+            fgros  *=  cropYield[aDay-1].potential.lai
+#           end of assim
+            dtga += fgros * Gauss3w[i]
           end
+          dtga = dtga * daylength
+        end
 
 #          println(dtga)
 #          exit(0)
 
-#         correction for low minimum temperature
-          dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
-#         potential assimilation in kg ch2o per ha
-          pgass = dtga * 30.0 / 44.0
+#       correction for low minimum temperature
+        dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
+#       potential assimilation in kg ch2o per ha
+        pgass = dtga * 30.0 / 44.0
 
-#         water stress reduction of pgass to gass and limited attainable maximum
-           gass = pgass * fTemperature * fMoisture
+#       water stress reduction of pgass to gass and limited attainable maximum
+        gass = pgass * fTemperature * fMoisture
 
-#         relative management factor that reduces crop growth
-          gass = gass * relmf
+#       relative management factor that reduces crop growth
+        gass = gass * relmf
 
-#         respiration and partitioning of carbohydrates between growth and maintenance respiration
-          rmres = (rmr * cropYield[aDay-1].potential.roots.living +
-                    rml * cropYield[aDay-1].potential.leaves.living +
-                    rms * cropYield[aDay-1].potential.stem.living) *
-                    interpolate(SenescenceReductionDaynumber,t)
-          teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
-          mres = min(gass, rmres * teff)
-          asrc = gass - mres
-#         println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
+#       respiration and partitioning of carbohydrates between growth and maintenance respiration
+        rmres = (rmr * cropYield[aDay-1].potential.roots.living +
+                rml * cropYield[aDay-1].potential.leaves.living +
+                rmo * cropYield[aDay-1].potential.storage.living +
+                rms * cropYield[aDay-1].potential.stem.living) *
+                interpolate(SenescenceReductionDvs,t)
+        teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
+        mres = min(gass, rmres * teff)
+        asrc = gass - mres
+#       println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
 
-#         partitioning factors
-          fr = interpolate(GrowthPartToRootsDaynumber, t)
-          fl = interpolate(GrowthPartToLeavesDaynumber, t)
-          fs = interpolate(GrowthPartToStemsDaynumber, t)
-#         check on partitioning
-          fcheck = fr + (fl + fs) * (1.0 - fr) - 1.0
-          if abs(fcheck) > 0.0001
-            println("???ERROR in partitioning: sum=",fcheck)
-          end
+#       partitioning factors
+        dvs = cropYield[aDay].potential.dvs
+        fr = interpolate(GrowthPartToRootsDvs, dvs)
+        fl = interpolate(GrowthPartToLeavesDvs, dvs)
+        fs = interpolate(GrowthPartToStemsDvs, dvs)
+        fso = interpolate(GrowthPartToStorageDvs, dvs)
+#       check on partitioning
+        fcheck = fr + (fl + fs + fso) * (1.0 - fr) - 1.0
+        if abs(fcheck) > 0.0001
+          println("???ERROR in partitioning: sum=",fcheck)
+        end
 
-#         dry matter increase
-          cvf = 1.0 / ((fl / cvl + fs / cvs) * (1.0 - fr) +fr / cvr)
-          dmi = cvf * asrc
-#          println(dmi)
-#         check on carbon balance
-          ccheck = (gass - mres - (fr + (fl + fs) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
-          if abs(ccheck) > 0.0001
-            println("???ERROR: The carbon balance is not correct")
-          end
+#       dry matter increase
+        cvf = 1.0 / ((fl / cvl + fs / cvs + fso / cvo) * (1.0 - fr) +fr / cvr)
+        dmi = cvf * asrc
+#       println(dmi)
+#       check on carbon balance
+        ccheck = (gass - mres - (fr + (fl + fs + fso) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
+        if abs(ccheck) > 0.0001
+          println("???ERROR: The carbon balance is not correct")
+        end
 
-#         growth rate by plant organ
+#       growth rate by plant organ
 
-#         growth rate roots and aerial parts
-#         after reaching a live weight of wrtmax(default 2500 kg), the
-#         growth of the roots is balanced by the death of root tissue
-          deathRateOfRoots = fTemperature * cropYield[aDay-1].potential.roots.living * interpolate(RelativeDeathRateOfRootsDaynumber,t)
-          growthRateOfRoots = fr * dmi
-          newWeight = cropYield[aDay-1].potential.roots.living + growthRateOfRoots - deathRateOfRoots
-          if newWeight > maximumRootWeight
-            growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
-            deathRateOfRoots = max(0.0, cropYield[aDay-1].potential.roots.living + growthRateOfRoots - maximumRootWeight)
-          end
-#          println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].potential.roots.living, "  dead=",cropYield[aDay-1].potential.roots.dead)
+#       growth rate roots and aerial parts
+#       after reaching a live weight of wrtmax(default 2500 kg), the
+#       growth of the roots is balanced by the death of root tissue
+        deathRateOfRoots = fTemperature * cropYield[aDay-1].potential.roots.living * interpolate(RelativeDeathRateOfRootsDvs,dvs)
+        growthRateOfRoots = fr * dmi
+        newWeight = cropYield[aDay-1].potential.roots.living + growthRateOfRoots - deathRateOfRoots
+        if newWeight > maximumRootWeight
+          growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
+          deathRateOfRoots = max(0.0, cropYield[aDay-1].potential.roots.living + growthRateOfRoots - maximumRootWeight)
+        end
+#       println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].potential.roots.living, "  dead=",cropYield[aDay-1].potential.roots.dead)
 
-#         growth rate leaves
-#         weight of new leaves
-          admi = (1.0 - fr) * dmi
-          growthRateLeaves = fl * admi
+#       growth rate leaves
+#       weight of new leaves
+        admi = (1.0 - fr) * dmi
+        growthRateLeaves = fl * admi
 
-#         death of leaves due to water stress or high lai
-          dslv1 = 0.0
-          laicr = 3.2/kdif
-          dslv2 = cropYield[aDay-1].potential.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].potential.lai - laicr) / laicr))
-          deathRateLeavesLai = max(dslv1, dslv2)
+#       death of leaves due to water stress or high lai
+        dslv1 = 0.0
+        laicr = 3.2/kDif
+        dslv2 = cropYield[aDay-1].potential.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].potential.lai - laicr) / laicr))
+        deathRateLeavesLai = max(dslv1, dslv2)
 
-#         death of leaves due to exceeding life span;
-#         leaf death is imposed on array until no more leaves have
-#         to die or all leaves are gone
+#       death of leaves due to exceeding life span;
+#       leaf death is imposed on array until no more leaves have
+#       to die or all leaves are gone
 
-          deathRateLeavesAge = 0.0
-          fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
-          for i in lastDayMowedPotential + 1 : aDay-1
-            cropYield[i].potential.leaveAge += fysdel
-            if cropYield[i].potential.leaveAge > maxAgeOfLeaves && cropYield[i].potential.leaves.living > 0.0
-              if cropYield[i].dailyPotentialGrowth.leaves.living > 0.0
-                deathRateLeavesAge += cropYield[i].dailyPotentialGrowth.leaves.living
-                global cropYield[i].dailyPotentialGrowth.leaves.dead += cropYield[i].dailyPotentialGrowth.leaves.living
-                global cropYield[i].dailyPotentialGrowth.leaves.living = 0.0
-              end
+        deathRateLeavesAge = 0.0
+        fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
+        for i in dayOfEmergence : aDay-1
+          cropYield[i].potential.leaveAge += fysdel
+          if cropYield[i].potential.leaveAge > maxAgeOfLeaves && cropYield[i].potential.leaves.living > 0.0
+            if cropYield[i].dailyPotentialGrowth.leaves.living > 0.0
+              deathRateLeavesAge += cropYield[i].dailyPotentialGrowth.leaves.living
+              global cropYield[i].dailyPotentialGrowth.leaves.dead += cropYield[i].dailyPotentialGrowth.leaves.living
+              global cropYield[i].dailyPotentialGrowth.leaves.living = 0.0
             end
-          end
-
-#         leaf area not to exceed exponential growth curve
-          slatpot = interpolate(SpecificLeafAreaDaynumber, t)
-          if cropYield[aDay-1].potential.laiExp < 6.0
-            dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
-            glaiexp = cropYield[aDay-1].potential.laiExp * dteff * rgrlai
-            glasol = growthRateLeaves * slatpot
-            gla = min(glaiexp,glasol)
-#           adjustment of specific leaf area of youngest leaf class
-            if growthRateLeaves > 0.0
-              slat = gla/growthRateLeaves
-            end
-          end
-
-#         growth rate stems
-          wst = cropYield[aDay-1].potential.stem.living
-          growthRateStem = fs*admi
-#         death of stems due to water stress is zero in case of potential growth
-          deathRateStem1 = 0.0
-#         death of stems due to ageing
-          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDaynumber, t) * wst
-          deathRateStem = deathRateStem1 + deathRateStem2
-
-#         integrals of the crop
-#         dry weight of living plant organs
-          global cropYield[aDay].dailyPotentialGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
-          global cropYield[aDay].potential.leaves.living = max(0.0, cropYield[aDay-1].potential.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
-          global cropYield[aDay].dailyPotentialGrowth.roots.living = growthRateOfRoots
-          global cropYield[aDay].potential.roots.living = cropYield[aDay-1].potential.roots.living + growthRateOfRoots - deathRateOfRoots
-          global cropYield[aDay].dailyPotentialGrowth.stem.living = growthRateStem - deathRateStem
-          global cropYield[aDay].potential.stem.living = cropYield[aDay-1].potential.stem.living + growthRateStem - deathRateStem
-
-#         dry weight of dead plant organs (roots,leaves & stems)
-          global cropYield[aDay].dailyPotentialGrowth.roots.dead =  deathRateOfRoots
-          global cropYield[aDay].potential.roots.dead = cropYield[aDay-1].potential.roots.dead + deathRateOfRoots
-          global cropYield[aDay].potential.leaves.dead = cropYield[aDay-1].potential.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
-          global cropYield[aDay].dailyPotentialGrowth.stem.dead = deathRateStem
-          global cropYield[aDay].potential.stem.dead = cropYield[aDay-1].potential.stem.dead + deathRateStem
-
-#         total
-          global cropYield[aDay].potential.total.living = cropYield[aDay].potential.leaves.living + cropYield[aDay].potential.stem.living
-          global cropYield[aDay].potential.total.dead = cropYield[aDay].potential.leaves.dead + cropYield[aDay].potential.stem.dead
-
-#         mowing
-          mowingRequired = false
-#          println(aDay, "   ", cropYield[aDay].potential.total.living + cropYield[aDay].potential.total.dead, "    ", gettingMowingDaysPotential)
-          if gettingMowingDaysPotential
-            if (cropYield[aDay].potential.total.living + cropYield[aDay].potential.total.dead > tresholdForMowing && aDay < lastAllowedMowingDay) ||
-               (aDay == lastAllowedMowingDay && cropYield[aDay].potential.total.living + cropYield[aDay].potential.total.dead >= tresholdForLastMowing)
-              global mowingRequired = true
-              global nMowingDaysPotential += 1
-              resize!(mowingDayPotential, nMowingDaysPotential)
-              global mowingDayPotential[nMowingDaysPotential] = aDay
-#              println("Mowing days: ",mowingDayPotential)
-            end
-          else
-#            println("MowingDays: ",mowingDayPotential)
-#            exit(0)
-            for i in 1:nMowingDaysPotential
-              if mowingDayPotential[i] == aDay
-                global mowingRequired = true
-                break
-              end
-            end
-          end
-
-          if mowingRequired
-            global lastDayMowedPotential = aDay
-            global mowed = cropYield[aDay].potential.total.living + cropYield[aDay].potential.total.dead - 700.0
-            if mowed < 2000.0
-              global delayInPotentialRegrowth = 2
-            else
-              if mowed < 4000.0
-                global delayInPotentialRegrowth = 3
-              else
-                global delayInPotentialRegrowth = 4
-              end
-            end
-
-            global cropYield[aDay].dailyPotentialGrowth.total.living = 0.0
-            global cropYield[aDay].dailyPotentialGrowth.total.dead = 0.0
-            global cropYield[aDay].potential.total.living = 700.0
-            global cropYield[aDay].potential.total.dead = 0.0
-            global cropYield[aDay].dailyPotentialGrowth.mowed = mowed
-
-            fl = interpolate(GrowthPartToLeavesDaynumber, t)
-            fs = interpolate(GrowthPartToStemsDaynumber, t)
-
-            global cropYield[aDay].potential.leaves.living = fl * 700.0
-            global cropYield[aDay].potential.stem.living = fs * 700.0
-            global cropYield[aDay].potential.leaves.dead = fl * 0.0
-            global cropYield[aDay].potential.stem.dead = fs * 0.0
           end
         end
 
-        global cropYield[aDay].potential.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].potential.roots.living + cropYield[aDay].potential.roots.dead)
-        global cropYield[aDay].potential.lai = cropYield[aDay].potential.leaves.living * interpolate(SpecificLeafAreaDaynumber, 0.0)
-        global cropYield[aDay].potential.mowed = cropYield[aDay-1].potential.mowed + mowed
-#       println(aDay,"   ",cropYield[aDay].potential.total.living,"   ",cropYield[aDay].potential.mowed)
+#       leaf area not to exceed exponential growth curve
+        glaiexp = 0.0
+        slatpot = interpolate(SpecificLeafAreaDvs, dvs)
+        if cropYield[aDay-1].potential.laiExp < 6.0
+          dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
+          glaiexp = cropYield[aDay-1].potential.laiExp * dteff * rgrlai
+          glasol = growthRateLeaves * slatpot
+          gla = min(glaiexp,glasol)
+#         adjustment of specific leaf area of youngest leaf class
+          if growthRateLeaves > 0.0
+            slat = gla/growthRateLeaves
+          end
+        end
+
+#       growth rate stems
+        wst = cropYield[aDay-1].potential.stem.living
+        growthRateStem = fs*admi
+#       death of stems due to water stress is zero in case of potential growth
+        deathRateStem1 = 0.0
+#       death of stems due to ageing
+        deathRateStem2 = interpolate(RelativeDeathRateOfStemsDvs, dvs) * wst
+        deathRateStem = deathRateStem1 + deathRateStem2
+
+#       growth rate storage organs
+        growthRateStorage = fso * admi
+
+#       lai in case of exponential growthRateStem
+        global cropYield[aDay].potential.laiExp += glaiexp
+
+#         integrals of the crop
+#         dry weight of living plant organs
+        global cropYield[aDay].dailyPotentialGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
+        global cropYield[aDay].potential.leaves.living = max(0.0, cropYield[aDay-1].potential.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
+        global cropYield[aDay].dailyPotentialGrowth.roots.living = growthRateOfRoots
+        global cropYield[aDay].potential.roots.living = cropYield[aDay-1].potential.roots.living + growthRateOfRoots - deathRateOfRoots
+        global cropYield[aDay].dailyPotentialGrowth.stem.living = growthRateStem - deathRateStem
+        global cropYield[aDay].potential.stem.living = cropYield[aDay-1].potential.stem.living + growthRateStem - deathRateStem
+        global cropYield[aDay].potential.storage.living = cropYield[aDay-1].potential.storage.living + growthRateStorage
+
+#       dry weight of dead plant organs (roots,leaves & stems)
+        global cropYield[aDay].dailyPotentialGrowth.roots.dead =  deathRateOfRoots
+        global cropYield[aDay].potential.roots.dead = cropYield[aDay-1].potential.roots.dead + deathRateOfRoots
+        global cropYield[aDay].potential.leaves.dead = cropYield[aDay-1].potential.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
+        global cropYield[aDay].dailyPotentialGrowth.stem.dead = deathRateStem
+        global cropYield[aDay].potential.stem.dead = cropYield[aDay-1].potential.stem.dead + deathRateStem
+        global cropYield[aDay].potential.storage.dead = 0.0
+
+#       total
+        global cropYield[aDay].potential.total.living = cropYield[aDay].potential.leaves.living + cropYield[aDay].potential.stem.living + cropYield[aDay].potential.storage.living
+        global cropYield[aDay].potential.total.dead = cropYield[aDay].potential.leaves.dead + cropYield[aDay].potential.stem.dead
+
+#       lai
+        global cropYield[aDay].potential.lai = cropYield[aDay].potential.leaves.living * interpolate(SpecificLeafAreaDvs, cropYield[aDay].potential.dvs)
+
+#        println(aDay, "   ", cropYield[aDay].potential.storage.living, "   ", cropYield[aDay].potential.lai)
       catch e
-        println("???ERROR in Grass.potentialGrassGrowth: ",e)
+        println("???ERROR in Potato.potentialCropGrowth: ",e)
       end
     finally
     end
   end
 
-  function actualGrassGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aMoisture :: Float64, aTemperature :: Float64)
+  function moistureCropGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aMoisture :: Float64)
     try
       try
-        fMoisture = aMoisture
-        fTemperature = aTemperature
-        mowed = 0.0
 
-        if aDay <= lastDayMowedActual + delayInActualRegrowth
-          copyActualValues(aDay)
-        else
-          t =convert(Float64, aDay)
-          avrad = 1000.0 * aMeteo.radiation
-          scv = 0.2
-
-#         Declination and solar constant for this day
-          declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
-          solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
-
-#         calculation of daylength from intermediate variables
-#         SINLD, COSLD and AOB
-          sinld = sind(latitude)*sin(declination)
-          cosld = cosd(latitude)*cos(declination)
-          aob = sinld/cosld
-
-#         Calculate solution for base=0 degrees
-          if abs(aob) <= 1.0
-            daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
-          else
-            if aob > 1.0
-              daylength = 24.0
-            end
-            if aob < 1.0
-              daylength =  0.0
-            end
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
-          end
-
-#         Calculate solution for base =-4 (ANGLE) degrees
-          angle = -4.0
-          aob_corr = (-sind(angle) + sinld)/cosld
-          if abs(aob_corr) <= 1.0
-            daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
-          else
-            if aob_corr > 1.0
-              daylp = 24.0
-            end
-            if aob_corr < -1.0
-              daylp =  0.0
-            end
-          end
-
-#         extraterrestrial radiation and atmospheric transmission
-          angot  = solarConstant * dsinb
-#         Check for daylength=0 as in that case the angot radiation is 0 as well
-          atmtr = 0.0
-          if daylength > 0.0
-            atmtr = avrad / angot
-          end
-
-#         estimate fraction diffuse irradiation
-          frdif = 0.0
-          if atmtr > 0.75
-            frdif = 0.23
-          end
-          if atmtr < 0.75 && atmtr > 0.35
-            frdif = 1.33 - 1.46 * atmtr
-          end
-          if atmtr <= 0.35 && atmtr > 0.07
-            frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
-          end
-          if atmtr <= 0.07
-            frdif = 1.0
-          end
-          difpp = frdif * atmtr * 0.5 * solarConstant
-
-          amax = interpolate(AssimilationRateDayNumber,t) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
-
-#         actual growth
-
-#          cropYield[aDay-1].actual.lai = 5.0
-          dtga  = 0.0
-          if amax > 0.0 && cropYield[aDay-1].actual.lai > 0.0
-            for i in 1:3
-              hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
-              sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
-              par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
-              pardif = min(par, sinb * difpp)
-              pardir = par - pardif
-
-#             extinction coefficients KDIF,KDIRBL,KDIRT, start of assim
-              refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
-              refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
-              kdirbl = (0.5 / sinb) * kdif / (0.8 * sqrt(1.0 - scv))
-              kdirt  = kdirbl * sqrt(1.0 - scv)
-
-#             three-point Gaussian integration over LAI
-              fgros  = 0.0
-              for j in 1:3
-                laic   = cropYield[aDay-1].actual.lai * Gauss3x[j]
-#               absorbed diffuse radiation (VISDF),light from direct
-#               origine (VIST) and direct light(VISD)
-                visdf  = (1.0 - refs) * pardif * kdif * exp(-kdif * laic)
-                vist   = (1.0 - refs) * pardir * kdirt * exp(-kdirt * laic)
-                visd   = (1.0 - scv) * pardir * kdirbl * exp(-kdirbl*laic)
-#               absorbed flux in W/m2 for shaded leaves and assimilation
-                visshd = visdf + vist - visd
-                fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
-#               direct light absorbed by leaves perpendicular on direct
-#               beam and assimilation of sunlit leaf area
-                vispp  = (1.0 - scv) * pardir / sinb
-                fgrsun = fgrsh
-                if vispp > 0.0
-                  fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
-                end
-#               fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
-                fslla  = exp(-kdirbl * laic)
-                fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
-#               integration
-                fgros  += fgl * Gauss3w[j]
-              end
-              fgros  *=  cropYield[aDay-1].actual.lai
-#             end of assim
-              dtga += fgros * Gauss3w[i]
-            end
-            dtga = dtga * daylength
-          end
-
-#          println(dtga)
-#          exit(0)
-
-#         correction for low minimum temperature
-          dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
-#         actual assimilation in kg ch2o per ha
-          pgass = dtga * 30.0 / 44.0
-
-#         water stress reduction of pgass to gass and limited attainable maximum
-          gass = pgass * fMoisture * fTemperature
-
-#         relative management factor that reduces crop growth
-          gass = gass * relmf
-
-#         respiration and partitioning of carbohydrates between growth and maintenance respiration
-          rmres = (rmr * cropYield[aDay-1].actual.roots.living +
-                    rml * cropYield[aDay-1].actual.leaves.living +
-                    rms * cropYield[aDay-1].actual.stem.living) *
-                    interpolate(SenescenceReductionDaynumber,t)
-          teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
-          mres = min(gass, rmres * teff)
-          asrc = gass - mres
-#         println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
-
-#         partitioning factors
-          fr = interpolate(GrowthPartToRootsDaynumber, t)
-          fl = interpolate(GrowthPartToLeavesDaynumber, t)
-          fs = interpolate(GrowthPartToStemsDaynumber, t)
-#         check on partitioning
-          fcheck = fr + (fl + fs) * (1.0 - fr) - 1.0
-          if abs(fcheck) > 0.0001
-            println("???ERROR in partitioning: sum=",fcheck)
-          end
-
-#         dry matter increase
-          cvf = 1.0 / ((fl / cvl + fs / cvs) * (1.0 - fr) +fr / cvr)
-          dmi = cvf * asrc
-#          println(dmi)
-#         check on carbon balance
-          ccheck = (gass - mres - (fr + (fl + fs) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
-          if abs(ccheck) > 0.0001
-            println("???ERROR: The carbon balance is not correct")
-          end
-
-#         growth rate by plant organ
-
-#         growth rate roots and aerial parts
-#         after reaching a live weight of wrtmax(default 2500 kg), the
-#         growth of the roots is balanced by the death of root tissue
-          deathRateOfRoots = cropYield[aDay-1].actual.roots.living * fTemperature * interpolate(RelativeDeathRateOfRootsDaynumber,t)
-          growthRateOfRoots = fr * dmi
-          newWeight = cropYield[aDay-1].actual.roots.living + growthRateOfRoots - deathRateOfRoots
-          if newWeight > maximumRootWeight
-            growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
-            deathRateOfRoots = max(0.0, cropYield[aDay-1].actual.roots.living + growthRateOfRoots - maximumRootWeight)
-          end
-#          println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].actual.roots.living, "  dead=",cropYield[aDay-1].actual.roots.dead)
-
-#         growth rate leaves
-#         weight of new leaves
-          admi = (1.0 - fr) * dmi
-          growthRateLeaves = fl * admi
-
-#         death of leaves due to water stress, temperature or high lai
-          dslv1 = growthRateLeaves * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-          laicr = 3.2/kdif
-          dslv2 = cropYield[aDay-1].actual.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].actual.lai - laicr) / laicr))
-          deathRateLeavesLai = max(dslv1, dslv2)
-
-#         death of leaves due to exceeding life span;
-#         leaf death is imposed on array until no more leaves have
-#         to die or all leaves are gone
-
-          deathRateLeavesAge = 0.0
-          fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
-          for i in lastDayMowedActual + 1 : aDay-1
-            cropYield[i].actual.leaveAge += fysdel
-#            if aDay > 160 && aDay < 170
-#              println(aDay,"  ",i, "   ",fysdel,"  ",maxAgeOfLeaves,"   ",cropYield[i].actual.leaveAge)
-#            end
-            if cropYield[i].actual.leaveAge > maxAgeOfLeaves && cropYield[i].actual.leaves.living > 0.0
-              if cropYield[i].dailyActualGrowth.leaves.living > 0.0
-                deathRateLeavesAge += cropYield[i].dailyActualGrowth.leaves.living
-                global cropYield[i].dailyActualGrowth.leaves.dead += cropYield[i].dailyActualGrowth.leaves.living
-                global cropYield[i].dailyActualGrowth.leaves.living = 0.0
-              end
-            end
-          end
-
-#         leaf area not to exceed exponential growth curve
-          slatpot = interpolate(SpecificLeafAreaDaynumber, t)
-          if cropYield[aDay-1].actual.laiExp < 6.0
-            dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
-            glaiexp = cropYield[aDay-1].actual.laiExp * dteff * rgrlai
-            glasol = growthRateLeaves * slatpot
-            gla = min(glaiexp,glasol)
-#           adjustment of specific leaf area of youngest leaf class
-            if growthRateLeaves > 0.0
-              slat = gla/growthRateLeaves
-            end
-          end
-
-#         growth rate stems
-          wst = cropYield[aDay-1].actual.stem.living
-          growthRateStem = fs*admi
-#         death of stems due to water stress is zero in case of actual growth
-          deathRateStem1 = growthRateStem * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-#         death of stems due to ageing
-          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDaynumber, t) * wst
-          deathRateStem = deathRateStem1 + deathRateStem2
-#          if aDay > 160 && aDay < 170
-#            println(aDay,"   ",cropYield[aDay-1].actual.leaves.living, "   ", growthRateLeaves,   "   ", deathRateLeavesLai, "   ", deathRateLeavesAge)
-#          end
-#         integrals of the crop
-#         dry weight of living plant organs
-          global cropYield[aDay].dailyActualGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
-          global cropYield[aDay].actual.leaves.living = max(0.0, cropYield[aDay-1].actual.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
-          global cropYield[aDay].dailyActualGrowth.roots.living = growthRateOfRoots
-          global cropYield[aDay].actual.roots.living = cropYield[aDay-1].actual.roots.living + growthRateOfRoots - deathRateOfRoots
-          global cropYield[aDay].dailyActualGrowth.stem.living = growthRateStem - deathRateStem
-          global cropYield[aDay].actual.stem.living = cropYield[aDay-1].actual.stem.living + growthRateStem - deathRateStem
-
-#         dry weight of dead plant organs (roots,leaves & stems)
-          global cropYield[aDay].dailyActualGrowth.roots.dead =  deathRateOfRoots
-          global cropYield[aDay].actual.roots.dead = cropYield[aDay-1].actual.roots.dead + deathRateOfRoots
-          global cropYield[aDay].actual.leaves.dead = cropYield[aDay-1].actual.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
-          global cropYield[aDay].dailyActualGrowth.stem.dead = deathRateStem
-          global cropYield[aDay].actual.stem.dead = cropYield[aDay-1].actual.stem.dead + deathRateStem
-
-#         total
-          global cropYield[aDay].actual.total.living = cropYield[aDay].actual.leaves.living + cropYield[aDay].actual.stem.living
-          global cropYield[aDay].actual.total.dead = cropYield[aDay].actual.leaves.dead + cropYield[aDay].actual.stem.dead
-
-#         mowing
-          mowingRequired = false
-          if gettingMowingDaysActual
-            if (cropYield[aDay].actual.total.living + cropYield[aDay].actual.total.dead > tresholdForMowing && aDay < lastAllowedMowingDay) ||
-               (aDay == lastAllowedMowingDay && cropYield[aDay].actual.total.living + cropYield[aDay].actual.total.dead >= tresholdForLastMowing)
-              global mowingRequired = true
-              global nMowingDaysActual += 1
-              resize!(mowingDayActual, nMowingDaysActual)
-              global mowingDayActual[nMowingDaysActual] = aDay
-            end
-          else
-            for i in 1:nMowingDaysActual
-              if mowingDayActual[i] == aDay
-                global mowingRequired = true
-                break
-              end
-            end
-          end
-
-          if mowingRequired
-            global lastDayMowedActual = aDay
-            global mowed = cropYield[aDay].actual.total.living + cropYield[aDay].actual.total.dead- 700.0
-            if mowed < 2000.0
-              global delayInActualRegrowth = 2
-            else
-              if mowed < 4000.0
-                global delayInActualRegrowth = 3
-              else
-                global delayInActualRegrowth = 4
-              end
-            end
-
-            global cropYield[aDay].dailyActualGrowth.total.living = 0.0
-            global cropYield[aDay].dailyActualGrowth.total.dead = 0.0
-            global cropYield[aDay].actual.total.living = 700.0
-            global cropYield[aDay].actual.total.dead = 0.0
-
-            global cropYield[aDay].dailyActualGrowth.mowed = mowed
-
-            fl = interpolate(GrowthPartToLeavesDaynumber, t)
-            fs = interpolate(GrowthPartToStemsDaynumber, t)
-
-            global cropYield[aDay].actual.leaves.living = fl * 700.0
-            global cropYield[aDay].actual.stem.living = fs * 700.0
-            global cropYield[aDay].actual.leaves.dead = fl * 0.0
-            global cropYield[aDay].actual.stem.dead = fs * 0.0
-          end
-        end
-
-        global cropYield[aDay].actual.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].actual.roots.living + cropYield[aDay].actual.roots.dead)
-        global cropYield[aDay].actual.lai = cropYield[aDay].actual.leaves.living * interpolate(SpecificLeafAreaDaynumber, 0.0)
-        global cropYield[aDay].actual.mowed = cropYield[aDay-1].actual.mowed + mowed
-#       println(aDay,"   ",cropYield[aDay].actual.total.living,"   ",cropYield[aDay].actual.mowed)
-      catch e
-        println("???ERROR in Grass.actualGrassGrowth: ",e)
-      end
-    finally
-    end
-  end
-
-  function moistureGrassGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aMoisture :: Float64)
-    try
-      try
         fMoisture = aMoisture
         fTemperature = 1.0
-        mowed = 0.0
-        if aDay <= lastDayMowedMoisture + delayInMoistureRegrowth
-          copyMoistureValues(aDay)
+
+        t =convert(Float64, aDay)
+        avrad = 1000.0 * aMeteo.radiation
+        scv = 0.2
+
+#       Declination and solar constant for this day
+        declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
+        solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
+
+#       calculation of daylength from intermediate variables
+#       SINLD, COSLD and AOB
+        sinld = sind(latitude)*sin(declination)
+        cosld = cosd(latitude)*cos(declination)
+        aob = sinld/cosld
+
+#       Calculate solution for base=0 degrees
+        if abs(aob) <= 1.0
+          daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
+#         integrals of sine of solar height
+          dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
+          dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
         else
-          t =convert(Float64, aDay)
-          avrad = 1000.0 * aMeteo.radiation
-          scv = 0.2
-
-#         Declination and solar constant for this day
-          declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
-          solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
-
-#         calculation of daylength from intermediate variables
-#         SINLD, COSLD and AOB
-          sinld = sind(latitude)*sin(declination)
-          cosld = cosd(latitude)*cos(declination)
-          aob = sinld/cosld
-
-#         Calculate solution for base=0 degrees
-          if abs(aob) <= 1.0
-            daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
-          else
-            if aob > 1.0
-              daylength = 24.0
-            end
-            if aob < 1.0
-              daylength =  0.0
-            end
-#           integrals of sine of solar height
-            dsinb  = 3600.0 * (daylength * sinld)
-            dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
+          if aob > 1.0
+             daylength = 24.0
           end
-
-#         Calculate solution for base =-4 (ANGLE) degrees
-          angle = -4.0
-          aob_corr = (-sind(angle) + sinld)/cosld
-          if abs(aob_corr) <= 1.0
-            daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
-          else
-            if aob_corr > 1.0
-              daylp = 24.0
-            end
-            if aob_corr < -1.0
-              daylp =  0.0
-            end
+          if aob < 1.0
+            daylength =  0.0
           end
+#         integrals of sine of solar height
+          dsinb  = 3600.0 * (daylength * sinld)
+          dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
+        end
 
-#         extraterrestrial radiation and atmospheric transmission
-          angot  = solarConstant * dsinb
-#         Check for daylength=0 as in that case the angot radiation is 0 as well
-          atmtr = 0.0
-          if daylength > 0.0
-            atmtr = avrad / angot
+#       Calculate solution for base =-4 (ANGLE) degrees
+        angle = -4.0
+        aob_corr = (-sind(angle) + sinld)/cosld
+        if abs(aob_corr) <= 1.0
+          daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
+         else
+          if aob_corr > 1.0
+             daylp = 24.0
           end
-
-#         estimate fraction diffuse irradiation
-          frdif = 0.0
-          if atmtr > 0.75
-            frdif = 0.23
+          if aob_corr < -1.0
+            daylp =  0.0
           end
-          if atmtr < 0.75 && atmtr > 0.35
-            frdif = 1.33 - 1.46 * atmtr
-          end
-          if atmtr <= 0.35 && atmtr > 0.07
-            frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
-          end
-          if atmtr <= 0.07
-            frdif = 1.0
-          end
-          difpp = frdif * atmtr * 0.5 * solarConstant
+        end
 
-          amax = interpolate(AssimilationRateDayNumber,t) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
+#       extraterrestrial radiation and atmospheric transmission
+        angot  = solarConstant * dsinb
+#       Check for daylength=0 as in that case the angot radiation is 0 as well
+        atmtr = 0.0
+        if daylength > 0.0
+          atmtr = avrad / angot
+        end
 
-#         actual growth
+#       estimate fraction diffuse irradiation
+        frdif = 0.0
+        if atmtr > 0.75
+          frdif = 0.23
+        end
+        if atmtr < 0.75 && atmtr > 0.35
+          frdif = 1.33 - 1.46 * atmtr
+        end
+        if atmtr <= 0.35 && atmtr > 0.07
+          frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
+        end
+        if atmtr <= 0.07
+          frdif = 1.0
+        end
+        difpp = frdif * atmtr * 0.5 * solarConstant
 
-#          cropYield[aDay-1].moisture.lai = 5.0
-          dtga  = 0.0
-          if amax > 0.0 && cropYield[aDay-1].moisture.lai > 0.0
-            for i in 1:3
-              hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
-              sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
-              par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
-              pardif = min(par, sinb * difpp)
-              pardir = par - pardif
+        amax = interpolate(AssimilationRateDvs,cropYield[aDay].moisture.dvs) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
 
-#             extinction coefficients KDIF,KDIRBL,KDIRT, start of assim
-              refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
-              refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
-              kdirbl = (0.5 / sinb) * kdif / (0.8 * sqrt(1.0 - scv))
-              kdirt  = kdirbl * sqrt(1.0 - scv)
+#       potential growth
+        dtga  = 0.0
+        if amax > 0.0 && cropYield[aDay-1].moisture.lai > 0.0
+          for i in 1:3
+            hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
+            sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
+            par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
+            pardif = min(par, sinb * difpp)
+            pardir = par - pardif
 
-#             three-point Gaussian integration over LAI
-              fgros  = 0.0
-              for j in 1:3
-                laic   = cropYield[aDay-1].moisture.lai * Gauss3x[j]
-#               absorbed diffuse radiation (VISDF),light from direct
-#               origine (VIST) and direct light(VISD)
-                visdf  = (1.0 - refs) * pardif * kdif * exp(-kdif * laic)
-                vist   = (1.0 - refs) * pardir * kdirt * exp(-kdirt * laic)
-                visd   = (1.0 - scv) * pardir * kdirbl * exp(-kdirbl*laic)
-#               absorbed flux in W/m2 for shaded leaves and assimilation
-                visshd = visdf + vist - visd
-                fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
-#               direct light absorbed by leaves perpendicular on direct
-#               beam and assimilation of sunlit leaf area
-                vispp  = (1.0 - scv) * pardir / sinb
-                fgrsun = fgrsh
-                if vispp > 0.0
-                  fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
-                end
-#               fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
-                fslla  = exp(-kdirbl * laic)
-                fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
-#               integration
-                fgros  += fgl * Gauss3w[j]
+#           extinction coefficients kDif,kDirBL,kDirT, start of assim
+            refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
+            refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
+            kDirbl = (0.5 / sinb) * kDif / (0.8 * sqrt(1.0 - scv))
+            kDirt  = kDirbl * sqrt(1.0 - scv)
+
+#           three-point Gaussian integration over LAI
+            fgros  = 0.0
+            for j in 1:3
+              laic   = cropYield[aDay-1].moisture.lai * Gauss3x[j]
+#             absorbed diffuse radiation (VISDF),light from direct
+#             origine (VIST) and direct light(VISD)
+              visdf  = (1.0 - refs) * pardif * kDif * exp(-kDif * laic)
+              vist   = (1.0 - refs) * pardir * kDirt * exp(-kDirt * laic)
+              visd   = (1.0 - scv) * pardir * kDirbl * exp(-kDirbl*laic)
+#             absorbed flux in W/m2 for shaded leaves and assimilation
+              visshd = visdf + vist - visd
+              fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
+#             direct light absorbed by leaves perpendicular on direct
+#             beam and assimilation of sunlit leaf area
+              vispp  = (1.0 - scv) * pardir / sinb
+              fgrsun = fgrsh
+              if vispp > 0.0
+                fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
               end
-              fgros  *=  cropYield[aDay-1].moisture.lai
-#             end of assim
-              dtga += fgros * Gauss3w[i]
+#             fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
+              fslla  = exp(-kDirbl * laic)
+              fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
+#             integration
+              fgros  += fgl * Gauss3w[j]
             end
-            dtga = dtga * daylength
+            fgros  *=  cropYield[aDay-1].moisture.lai
+#           end of assim
+            dtga += fgros * Gauss3w[i]
           end
+          dtga = dtga * daylength
+        end
 
 #          println(dtga)
 #          exit(0)
 
-#         correction for low minimum temperature
-          dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
-#         actual assimilation in kg ch2o per ha
-          pgass = dtga * 30.0 / 44.0
+#       correction for low minimum temperature
+        dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
+#       potential assimilation in kg ch2o per ha
+        pgass = dtga * 30.0 / 44.0
 
-#         water stress reduction of pgass to gass and limited attainable maximum
-          gass = pgass * fTemperature * fMoisture
+#       water stress reduction of pgass to gass and limited attainable maximum
+        gass = pgass * fTemperature * fMoisture
 
-#         relative management factor that reduces crop growth
-          gass = gass * relmf
+#       relative management factor that reduces crop growth
+        gass = gass * relmf
 
-#         respiration and partitioning of carbohydrates between growth and maintenance respiration
-          rmres = (rmr * cropYield[aDay-1].moisture.roots.living +
-                    rml * cropYield[aDay-1].moisture.leaves.living +
-                    rms * cropYield[aDay-1].moisture.stem.living) *
-                    interpolate(SenescenceReductionDaynumber,t)
-          teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
-          mres = min(gass, rmres * teff)
-          asrc = gass - mres
-#         println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
+#       respiration and partitioning of carbohydrates between growth and maintenance respiration
+        rmres = (rmr * cropYield[aDay-1].moisture.roots.living +
+                rml * cropYield[aDay-1].moisture.leaves.living +
+                rmo * cropYield[aDay-1].moisture.storage.living +
+                rms * cropYield[aDay-1].moisture.stem.living) *
+                interpolate(SenescenceReductionDvs,t)
+        teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
+        mres = min(gass, rmres * teff)
+        asrc = gass - mres
+#       println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
 
-#         partitioning factors
-          fr = interpolate(GrowthPartToRootsDaynumber, t)
-          fl = interpolate(GrowthPartToLeavesDaynumber, t)
-          fs = interpolate(GrowthPartToStemsDaynumber, t)
-#         check on partitioning
-          fcheck = fr + (fl + fs) * (1.0 - fr) - 1.0
-          if abs(fcheck) > 0.0001
-            println("???ERROR in partitioning: sum=",fcheck)
-          end
+#       partitioning factors
+        dvs = cropYield[aDay].moisture.dvs
+        fr = interpolate(GrowthPartToRootsDvs, dvs)
+        fl = interpolate(GrowthPartToLeavesDvs, dvs)
+        fs = interpolate(GrowthPartToStemsDvs, dvs)
+        fso = interpolate(GrowthPartToStorageDvs, dvs)
+#       check on partitioning
+        fcheck = fr + (fl + fs + fso) * (1.0 - fr) - 1.0
+        if abs(fcheck) > 0.0001
+          println("???ERROR in partitioning: sum=",fcheck)
+        end
 
-#         dry matter increase
-          cvf = 1.0 / ((fl / cvl + fs / cvs) * (1.0 - fr) +fr / cvr)
-          dmi = cvf * asrc
-#          println(dmi)
-#         check on carbon balance
-          ccheck = (gass - mres - (fr + (fl + fs) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
-          if abs(ccheck) > 0.0001
-            println("???ERROR: The carbon balance is not correct")
-          end
+#       dry matter increase
+        cvf = 1.0 / ((fl / cvl + fs / cvs + fso / cvo) * (1.0 - fr) +fr / cvr)
+        dmi = cvf * asrc
+#       println(dmi)
+#       check on carbon balance
+        ccheck = (gass - mres - (fr + (fl + fs + fso) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
+        if abs(ccheck) > 0.0001
+          println("???ERROR: The carbon balance is not correct")
+        end
 
-#         growth rate by plant organ
+#       growth rate by plant organ
 
-#         growth rate roots and aerial parts
-#         after reaching a live weight of wrtmax(default 2500 kg), the
-#         growth of the roots is balanced by the death of root tissue
-          deathRateOfRoots = fTemperature * cropYield[aDay-1].moisture.roots.living * interpolate(RelativeDeathRateOfRootsDaynumber,t)
-          growthRateOfRoots = fr * dmi
-          newWeight = cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - deathRateOfRoots
-          if newWeight > maximumRootWeight
-            growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
-            deathRateOfRoots = max(0.0, cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - maximumRootWeight)
-          end
-#          println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].moisture.roots.living, "  dead=",cropYield[aDay-1].moisture.roots.dead)
+#       growth rate roots and aerial parts
+#       after reaching a live weight of wrtmax(default 2500 kg), the
+#       growth of the roots is balanced by the death of root tissue
+        deathRateOfRoots = fTemperature * cropYield[aDay-1].moisture.roots.living * interpolate(RelativeDeathRateOfRootsDvs,dvs)
+        growthRateOfRoots = fr * dmi
+        newWeight = cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - deathRateOfRoots
+        if newWeight > maximumRootWeight
+          growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
+          deathRateOfRoots = max(0.0, cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - maximumRootWeight)
+        end
+#       println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].moisture.roots.living, "  dead=",cropYield[aDay-1].moisture.roots.dead)
 
-#         growth rate leaves
-#         weight of new leaves
-          admi = (1.0 - fr) * dmi
-          growthRateLeaves = fl * admi
+#       growth rate leaves
+#       weight of new leaves
+        admi = (1.0 - fr) * dmi
+        growthRateLeaves = fl * admi
 
-#         death of leaves due to water stress or high lai
-          dslv1 = growthRateLeaves * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-          laicr = 3.2/kdif
-          dslv2 = cropYield[aDay-1].moisture.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].moisture.lai - laicr) / laicr))
-          deathRateLeavesLai = max(dslv1, dslv2)
+#       death of leaves due to water stress or high lai
+        dslv1 = growthRateLeaves * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
+        laicr = 3.2/kDif
+        dslv2 = cropYield[aDay-1].moisture.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].moisture.lai - laicr) / laicr))
+        deathRateLeavesLai = max(dslv1, dslv2)
 
-#         death of leaves due to exceeding life span;
-#         leaf death is imposed on array until no more leaves have
-#         to die or all leaves are gone
+#       death of leaves due to exceeding life span;
+#       leaf death is imposed on array until no more leaves have
+#       to die or all leaves are gone
 
-          deathRateLeavesAge = 0.0
-          fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
-          for i in lastDayMowedMoisture + 1 : aDay-1
-            cropYield[i].moisture.leaveAge += fysdel
-            if cropYield[i].moisture.leaveAge > maxAgeOfLeaves && cropYield[i].moisture.leaves.living > 0.0
-              if cropYield[i].dailyMoistureGrowth.leaves.living > 0.0
-                deathRateLeavesAge += cropYield[i].dailyMoistureGrowth.leaves.living
-                global cropYield[i].dailyMoistureGrowth.leaves.dead += cropYield[i].dailyMoistureGrowth.leaves.living
-                global cropYield[i].dailyMoistureGrowth.leaves.living = 0.0
-              end
+        deathRateLeavesAge = 0.0
+        fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
+        for i in dayOfEmergence : aDay-1
+          cropYield[i].moisture.leaveAge += fysdel
+          if cropYield[i].moisture.leaveAge > maxAgeOfLeaves && cropYield[i].moisture.leaves.living > 0.0
+            if cropYield[i].dailyMoistureGrowth.leaves.living > 0.0
+              deathRateLeavesAge += cropYield[i].dailyMoistureGrowth.leaves.living
+              global cropYield[i].dailyMoistureGrowth.leaves.dead += cropYield[i].dailyMoistureGrowth.leaves.living
+              global cropYield[i].dailyMoistureGrowth.leaves.living = 0.0
             end
-          end
-
-#         leaf area not to exceed exponential growth curve
-          slatpot = interpolate(SpecificLeafAreaDaynumber, t)
-          if cropYield[aDay-1].moisture.laiExp < 6.0
-            dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
-            glaiexp = cropYield[aDay-1].moisture.laiExp * dteff * rgrlai
-            glasol = growthRateLeaves * slatpot
-            gla = min(glaiexp,glasol)
-#           adjustment of specific leaf area of youngest leaf class
-            if growthRateLeaves > 0.0
-              slat = gla/growthRateLeaves
-            end
-          end
-
-#         growth rate stems
-          wst = cropYield[aDay-1].moisture.stem.living
-          growthRateStem = fs*admi
-#         death of stems due to water stress is zero in case of actual growth
-          deathRateStem1 = growthRateStem * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-#         death of stems due to ageing
-          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDaynumber, t) * wst
-          deathRateStem = deathRateStem1 + deathRateStem2
-
-#         integrals of the crop
-#         dry weight of living plant organs
-          global cropYield[aDay].dailyMoistureGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
-          global cropYield[aDay].moisture.leaves.living = max(0.0, cropYield[aDay-1].moisture.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
-          global cropYield[aDay].dailyMoistureGrowth.roots.living = growthRateOfRoots
-          global cropYield[aDay].moisture.roots.living = cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - deathRateOfRoots
-          global cropYield[aDay].dailyMoistureGrowth.stem.living = growthRateStem - deathRateStem
-          global cropYield[aDay].moisture.stem.living = cropYield[aDay-1].moisture.stem.living + growthRateStem - deathRateStem
-
-#         dry weight of dead plant organs (roots,leaves & stems)
-          global cropYield[aDay].dailyMoistureGrowth.roots.dead =  deathRateOfRoots
-          global cropYield[aDay].moisture.roots.dead = cropYield[aDay-1].moisture.roots.dead + deathRateOfRoots
-          global cropYield[aDay].moisture.leaves.dead = cropYield[aDay-1].moisture.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
-          global cropYield[aDay].dailyMoistureGrowth.stem.dead = deathRateStem
-          global cropYield[aDay].moisture.stem.dead = cropYield[aDay-1].moisture.stem.dead + deathRateStem
-
-#         total
-          global cropYield[aDay].moisture.total.living = cropYield[aDay].moisture.leaves.living + cropYield[aDay].moisture.stem.living
-          global cropYield[aDay].moisture.total.dead = cropYield[aDay].moisture.leaves.dead + cropYield[aDay].moisture.stem.dead
-
-#         mowing
-          mowingRequired = false
-          if gettingMowingDaysMoisture
-            if (cropYield[aDay].moisture.total.living + cropYield[aDay].moisture.total.dead > tresholdForMowing && aDay < lastAllowedMowingDay) ||
-               (aDay == lastAllowedMowingDay && cropYield[aDay].moisture.total.living + cropYield[aDay].moisture.total.dead >= tresholdForLastMowing)
-              global mowingRequired = true
-              global nMowingDaysMoisture += 1
-              resize!(mowingDayMoisture, nMowingDaysMoisture)
-              global mowingDayMoisture[nMowingDaysMoisture] = aDay
-            end
-          else
-            for i in 1:nMowingDaysMoisture
-              if mowingDayMoisture[i] == aDay
-                global mowingRequired = true
-                break
-              end
-            end
-          end
-
-          if mowingRequired
-            global lastDayMowedMoisture = aDay
-            global mowed = cropYield[aDay].moisture.total.living + cropYield[aDay].moisture.total.dead - 700.0
-            if mowed < 2000.0
-              global delayInMoistureRegrowth = 2
-            else
-              if mowed < 4000.0
-                global delayInMoistureRegrowth = 3
-              else
-                global delayInMoistureRegrowth = 4
-              end
-            end
-
-            global cropYield[aDay].dailyMoistureGrowth.total.living = 0.0
-            global cropYield[aDay].dailyMoistureGrowth.total.dead = 0.0
-            global cropYield[aDay].moisture.total.living = 700.0
-            global cropYield[aDay].moisture.total.dead = 0.0
-
-            global cropYield[aDay].dailyMoistureGrowth.mowed = mowed
-
-            fl = interpolate(GrowthPartToLeavesDaynumber, t)
-            fs = interpolate(GrowthPartToStemsDaynumber, t)
-
-            global cropYield[aDay].moisture.leaves.living = fl * 700.0
-            global cropYield[aDay].moisture.stem.living = fs * 700.0
-            global cropYield[aDay].moisture.leaves.dead = fl * 0.0
-            global cropYield[aDay].moisture.stem.dead = fs * 0.0
           end
         end
 
-        global cropYield[aDay].moisture.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].moisture.roots.living + cropYield[aDay].moisture.roots.dead)
-        global cropYield[aDay].moisture.lai = cropYield[aDay].moisture.leaves.living * interpolate(SpecificLeafAreaDaynumber, 0.0)
-        global cropYield[aDay].moisture.mowed = cropYield[aDay-1].moisture.mowed + mowed
-#        println(aDay,"   ",cropYield[aDay].moisture.total.living,"   ",cropYield[aDay].moisture.mowed)
+#       leaf area not to exceed exponential growth curve
+        glaiexp = 0.0
+        slatpot = interpolate(SpecificLeafAreaDvs, dvs)
+        if cropYield[aDay-1].moisture.laiExp < 6.0
+          dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
+          glaiexp = cropYield[aDay-1].moisture.laiExp * dteff * rgrlai
+          glasol = growthRateLeaves * slatpot
+          gla = min(glaiexp,glasol)
+#         adjustment of specific leaf area of youngest leaf class
+          if growthRateLeaves > 0.0
+            slat = gla/growthRateLeaves
+          end
+        end
+
+#       growth rate stems
+        wst = cropYield[aDay-1].moisture.stem.living
+        growthRateStem = fs*admi
+#       death of stems due to water stress
+        deathRateStem1 = growthRateStem * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
+#       death of stems due to ageing
+        deathRateStem2 = interpolate(RelativeDeathRateOfStemsDvs, dvs) * wst
+        deathRateStem = deathRateStem1 + deathRateStem2
+
+#       growth rate storage organs
+        growthRateStorage = fso * admi
+
+#       lai in case of exponential growthRateStem
+        global cropYield[aDay].moisture.laiExp += glaiexp
+
+#         integrals of the crop
+#         dry weight of living plant organs
+        global cropYield[aDay].dailyMoistureGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
+        global cropYield[aDay].moisture.leaves.living = max(0.0, cropYield[aDay-1].moisture.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
+        global cropYield[aDay].dailyMoistureGrowth.roots.living = growthRateOfRoots
+        global cropYield[aDay].moisture.roots.living = cropYield[aDay-1].moisture.roots.living + growthRateOfRoots - deathRateOfRoots
+        global cropYield[aDay].dailyMoistureGrowth.stem.living = growthRateStem - deathRateStem
+        global cropYield[aDay].moisture.stem.living = cropYield[aDay-1].moisture.stem.living + growthRateStem - deathRateStem
+        global cropYield[aDay].moisture.storage.living = cropYield[aDay-1].moisture.storage.living + growthRateStorage
+
+#       dry weight of dead plant organs (roots,leaves & stems)
+        global cropYield[aDay].dailyMoistureGrowth.roots.dead =  deathRateOfRoots
+        global cropYield[aDay].moisture.roots.dead = cropYield[aDay-1].moisture.roots.dead + deathRateOfRoots
+        global cropYield[aDay].moisture.leaves.dead = cropYield[aDay-1].moisture.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
+        global cropYield[aDay].dailyMoistureGrowth.stem.dead = deathRateStem
+        global cropYield[aDay].moisture.stem.dead = cropYield[aDay-1].moisture.stem.dead + deathRateStem
+        global cropYield[aDay].moisture.storage.dead = 0.0
+
+#       total
+        global cropYield[aDay].moisture.total.living = cropYield[aDay].moisture.leaves.living + cropYield[aDay].moisture.stem.living + cropYield[aDay].moisture.storage.living
+        global cropYield[aDay].moisture.total.dead = cropYield[aDay].moisture.leaves.dead + cropYield[aDay].moisture.stem.dead
+
+#       lai
+        global cropYield[aDay].moisture.lai = cropYield[aDay].moisture.leaves.living * interpolate(SpecificLeafAreaDvs, cropYield[aDay].moisture.dvs)
+
+#        println(aDay, "   ", cropYield[aDay].moisture.storage.living, "   ", cropYield[aDay].moisture.lai)
       catch e
-        println("???ERROR in Grass.moistureGrassGrowth: ",e)
+        println("???ERROR in moistureCropGrowth: ",e)
       end
     finally
     end
   end
 
-  function temperatureGrassGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aTemperature :: Float64)
-    try
+    function temperatureCropGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aTemperature :: Float64)
       try
-        fMoisture = 1.0
-        fTemperature = aTemperature
-        mowed = 0.0
+        try
 
-        if aDay <= lastDayMowedTemperature + delayInTemperatureRegrowth
-          copyTemperatureValues(aDay)
-        else
+          fMoisture = 1.0
+          fTemperature = aTemperature
+
           t =convert(Float64, aDay)
           avrad = 1000.0 * aMeteo.radiation
           scv = 0.2
 
-#         Declination and solar constant for this day
+  #       Declination and solar constant for this day
           declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
           solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
 
-#         calculation of daylength from intermediate variables
-#         SINLD, COSLD and AOB
+  #       calculation of daylength from intermediate variables
+  #       SINLD, COSLD and AOB
           sinld = sind(latitude)*sin(declination)
           cosld = cosd(latitude)*cos(declination)
           aob = sinld/cosld
 
-#         Calculate solution for base=0 degrees
+  #       Calculate solution for base=0 degrees
           if abs(aob) <= 1.0
             daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
-#           integrals of sine of solar height
+  #         integrals of sine of solar height
             dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
             dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
           else
             if aob > 1.0
-              daylength = 24.0
+               daylength = 24.0
             end
             if aob < 1.0
               daylength =  0.0
             end
-#           integrals of sine of solar height
+  #         integrals of sine of solar height
             dsinb  = 3600.0 * (daylength * sinld)
             dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
           end
 
-#         Calculate solution for base =-4 (ANGLE) degrees
+  #       Calculate solution for base =-4 (ANGLE) degrees
           angle = -4.0
           aob_corr = (-sind(angle) + sinld)/cosld
           if abs(aob_corr) <= 1.0
             daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
-          else
+           else
             if aob_corr > 1.0
-              daylp = 24.0
+               daylp = 24.0
             end
             if aob_corr < -1.0
               daylp =  0.0
             end
           end
 
-#         extraterrestrial radiation and atmospheric transmission
+  #       extraterrestrial radiation and atmospheric transmission
           angot  = solarConstant * dsinb
-#         Check for daylength=0 as in that case the angot radiation is 0 as well
+  #       Check for daylength=0 as in that case the angot radiation is 0 as well
           atmtr = 0.0
           if daylength > 0.0
             atmtr = avrad / angot
           end
 
-#         estimate fraction diffuse irradiation
+  #       estimate fraction diffuse irradiation
           frdif = 0.0
           if atmtr > 0.75
             frdif = 0.23
@@ -1667,10 +1336,9 @@ module Potato
           end
           difpp = frdif * atmtr * 0.5 * solarConstant
 
-          amax = interpolate(AssimilationRateDayNumber,t) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
+          amax = interpolate(AssimilationRateDvs,cropYield[aDay].temperature.dvs) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
 
-#         actual growth
-
+  #       potential growth
           dtga  = 0.0
           if amax > 0.0 && cropYield[aDay-1].temperature.lai > 0.0
             for i in 1:3
@@ -1680,120 +1348,123 @@ module Potato
               pardif = min(par, sinb * difpp)
               pardir = par - pardif
 
-#             extinction coefficients KDIF,KDIRBL,KDIRT, start of assim
+  #           extinction coefficients kDif,kDirBL,kDirT, start of assim
               refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
               refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
-              kdirbl = (0.5 / sinb) * kdif / (0.8 * sqrt(1.0 - scv))
-              kdirt  = kdirbl * sqrt(1.0 - scv)
+              kDirbl = (0.5 / sinb) * kDif / (0.8 * sqrt(1.0 - scv))
+              kDirt  = kDirbl * sqrt(1.0 - scv)
 
-#             three-point Gaussian integration over LAI
+  #           three-point Gaussian integration over LAI
               fgros  = 0.0
               for j in 1:3
-                laic   = cropYield[aDay-1].temperature.lai * Gauss3x[j]
-#               absorbed diffuse radiation (VISDF),light from direct
-#               origine (VIST) and direct light(VISD)
-                visdf  = (1.0 - refs) * pardif * kdif * exp(-kdif * laic)
-                vist   = (1.0 - refs) * pardir * kdirt * exp(-kdirt * laic)
-                visd   = (1.0 - scv) * pardir * kdirbl * exp(-kdirbl*laic)
-#               absorbed flux in W/m2 for shaded leaves and assimilation
+                laic   = cropYield[aDay-1].potential.lai * Gauss3x[j]
+  #             absorbed diffuse radiation (VISDF),light from direct
+  #             origine (VIST) and direct light(VISD)
+                visdf  = (1.0 - refs) * pardif * kDif * exp(-kDif * laic)
+                vist   = (1.0 - refs) * pardir * kDirt * exp(-kDirt * laic)
+                visd   = (1.0 - scv) * pardir * kDirbl * exp(-kDirbl*laic)
+  #             absorbed flux in W/m2 for shaded leaves and assimilation
                 visshd = visdf + vist - visd
                 fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
-#               direct light absorbed by leaves perpendicular on direct
-#               beam and assimilation of sunlit leaf area
+  #             direct light absorbed by leaves perpendicular on direct
+  #             beam and assimilation of sunlit leaf area
                 vispp  = (1.0 - scv) * pardir / sinb
                 fgrsun = fgrsh
                 if vispp > 0.0
                   fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
                 end
-#               fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
-                fslla  = exp(-kdirbl * laic)
+  #             fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
+                fslla  = exp(-kDirbl * laic)
                 fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
-#               integration
+  #             integration
                 fgros  += fgl * Gauss3w[j]
               end
               fgros  *=  cropYield[aDay-1].temperature.lai
-#             end of assim
+  #           end of assim
               dtga += fgros * Gauss3w[i]
             end
             dtga = dtga * daylength
           end
 
-#          println(dtga)
-#          exit(0)
+  #          println(dtga)
+  #          exit(0)
 
-#         correction for low minimum temperature
+  #       correction for low minimum temperature
           dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
-#         actual assimilation in kg ch2o per ha
+  #       potential assimilation in kg ch2o per ha
           pgass = dtga * 30.0 / 44.0
 
-#         water stress reduction of pgass to gass and limited attainable maximum
-          gass = fTemperature * fMoisture * pgass
+  #       water stress reduction of pgass to gass and limited attainable maximum
+          gass = pgass * fTemperature * fMoisture
 
-#         relative management factor that reduces crop growth
+  #       relative management factor that reduces crop growth
           gass = gass * relmf
 
-#         respiration and partitioning of carbohydrates between growth and maintenance respiration
+  #       respiration and partitioning of carbohydrates between growth and maintenance respiration
           rmres = (rmr * cropYield[aDay-1].temperature.roots.living +
-                    rml * cropYield[aDay-1].temperature.leaves.living +
-                    rms * cropYield[aDay-1].temperature.stem.living) *
-                    interpolate(SenescenceReductionDaynumber,t)
+                  rml * cropYield[aDay-1].temperature.leaves.living +
+                  rmo * cropYield[aDay-1].temperature.storage.living +
+                  rms * cropYield[aDay-1].temperature.stem.living) *
+                  interpolate(SenescenceReductionDvs,t)
           teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
           mres = min(gass, rmres * teff)
           asrc = gass - mres
-#         println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
+  #       println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
 
-#         partitioning factors
-          fr = interpolate(GrowthPartToRootsDaynumber, t)
-          fl = interpolate(GrowthPartToLeavesDaynumber, t)
-          fs = interpolate(GrowthPartToStemsDaynumber, t)
-#         check on partitioning
-          fcheck = fr + (fl + fs) * (1.0 - fr) - 1.0
+  #       partitioning factors
+          dvs = cropYield[aDay].temperature.dvs
+          fr = interpolate(GrowthPartToRootsDvs, dvs)
+          fl = interpolate(GrowthPartToLeavesDvs, dvs)
+          fs = interpolate(GrowthPartToStemsDvs, dvs)
+          fso = interpolate(GrowthPartToStorageDvs, dvs)
+  #       check on partitioning
+          fcheck = fr + (fl + fs + fso) * (1.0 - fr) - 1.0
           if abs(fcheck) > 0.0001
             println("???ERROR in partitioning: sum=",fcheck)
           end
 
-#         dry matter increase
-          cvf = 1.0 / ((fl / cvl + fs / cvs) * (1.0 - fr) +fr / cvr)
+  #       dry matter increase
+          cvf = 1.0 / ((fl / cvl + fs / cvs + fso / cvo) * (1.0 - fr) +fr / cvr)
           dmi = cvf * asrc
-#          println(dmi)
-#         check on carbon balance
-          ccheck = (gass - mres - (fr + (fl + fs) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
+  #       println(dmi)
+  #       check on carbon balance
+          ccheck = (gass - mres - (fr + (fl + fs + fso) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
           if abs(ccheck) > 0.0001
             println("???ERROR: The carbon balance is not correct")
           end
 
-#         growth rate by plant organ
+  #       growth rate by plant organ
 
-#         growth rate roots and aerial parts
-#         after reaching a live weight of wrtmax(default 2500 kg), the
-#         growth of the roots is balanced by the death of root tissue
-          deathRateOfRoots = fTemperature * cropYield[aDay-1].temperature.roots.living * interpolate(RelativeDeathRateOfRootsDaynumber,t)
+  #       growth rate roots and aerial parts
+  #       after reaching a live weight of wrtmax(default 2500 kg), the
+  #       growth of the roots is balanced by the death of root tissue
+          deathRateOfRoots = fTemperature * cropYield[aDay-1].temperature.roots.living * interpolate(RelativeDeathRateOfRootsDvs,dvs)
           growthRateOfRoots = fr * dmi
           newWeight = cropYield[aDay-1].temperature.roots.living + growthRateOfRoots - deathRateOfRoots
           if newWeight > maximumRootWeight
             growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
             deathRateOfRoots = max(0.0, cropYield[aDay-1].temperature.roots.living + growthRateOfRoots - maximumRootWeight)
           end
-#          println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].temperature.roots.living, "  dead=",cropYield[aDay-1].temperature.roots.dead)
+  #       println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].temperature.roots.living, "  dead=",cropYield[aDay-1].temperature.roots.dead)
 
-#         growth rate leaves
-#         weight of new leaves
+  #       growth rate leaves
+  #       weight of new leaves
           admi = (1.0 - fr) * dmi
           growthRateLeaves = fl * admi
 
-#         death of leaves due to water stress, temperature or high lai
+  #       death of leaves due to water stress or high lai
           dslv1 = growthRateLeaves * fTemperature * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-          laicr = 3.2/kdif
+          laicr = 3.2/kDif
           dslv2 = cropYield[aDay-1].temperature.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].temperature.lai - laicr) / laicr))
           deathRateLeavesLai = max(dslv1, dslv2)
 
-#         death of leaves due to exceeding life span;
-#         leaf death is imposed on array until no more leaves have
-#         to die or all leaves are gone
+  #       death of leaves due to exceeding life span;
+  #       leaf death is imposed on array until no more leaves have
+  #       to die or all leaves are gone
 
           deathRateLeavesAge = 0.0
           fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
-          for i in lastDayMowedTemperature + 1 : aDay-1
+          for i in dayOfEmergence : aDay-1
             cropYield[i].temperature.leaveAge += fysdel
             if cropYield[i].temperature.leaveAge > maxAgeOfLeaves && cropYield[i].temperature.leaves.living > 0.0
               if cropYield[i].dailyTemperatureGrowth.leaves.living > 0.0
@@ -1804,127 +1475,348 @@ module Potato
             end
           end
 
-#         leaf area not to exceed exponential growth curve
-          slatpot = interpolate(SpecificLeafAreaDaynumber, t)
+  #       leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
+          slatpot = interpolate(SpecificLeafAreaDvs, dvs)
           if cropYield[aDay-1].temperature.laiExp < 6.0
             dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
             glaiexp = cropYield[aDay-1].temperature.laiExp * dteff * rgrlai
             glasol = growthRateLeaves * slatpot
             gla = min(glaiexp,glasol)
-#           adjustment of specific leaf area of youngest leaf class
+  #         adjustment of specific leaf area of youngest leaf class
             if growthRateLeaves > 0.0
               slat = gla/growthRateLeaves
             end
           end
 
-#         growth rate stems
+  #       growth rate stems
           wst = cropYield[aDay-1].temperature.stem.living
           growthRateStem = fs*admi
-#         death of stems due to water stress is zero in case of actual growth
-          deathRateStem1 = growthRateStem * fTemperature *(1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
-#         death of stems due to ageing
-          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDaynumber, t) * wst
+  #       death of stems due to water stress
+          deathRateStem1 = growthRateStem * fTemperature * (1.0 - fTemperature) * RelativeDeathRateOfLeavesByWaterStress
+  #       death of stems due to ageing
+          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDvs, dvs) * wst
           deathRateStem = deathRateStem1 + deathRateStem2
 
-#         integrals of the crop
-#         dry weight of living plant organs
+  #       growth rate storage organs
+          growthRateStorage = fso * admi
+
+  #       lai in case of exponential growthRateStem
+          global cropYield[aDay].temperature.laiExp += glaiexp
+
+  #         integrals of the crop
+  #         dry weight of living plant organs
           global cropYield[aDay].dailyTemperatureGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
           global cropYield[aDay].temperature.leaves.living = max(0.0, cropYield[aDay-1].temperature.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
           global cropYield[aDay].dailyTemperatureGrowth.roots.living = growthRateOfRoots
           global cropYield[aDay].temperature.roots.living = cropYield[aDay-1].temperature.roots.living + growthRateOfRoots - deathRateOfRoots
           global cropYield[aDay].dailyTemperatureGrowth.stem.living = growthRateStem - deathRateStem
           global cropYield[aDay].temperature.stem.living = cropYield[aDay-1].temperature.stem.living + growthRateStem - deathRateStem
+          global cropYield[aDay].temperature.storage.living = cropYield[aDay-1].temperature.storage.living + growthRateStorage
 
-#         dry weight of dead plant organs (roots,leaves & stems)
+  #       dry weight of dead plant organs (roots,leaves & stems)
           global cropYield[aDay].dailyTemperatureGrowth.roots.dead =  deathRateOfRoots
           global cropYield[aDay].temperature.roots.dead = cropYield[aDay-1].temperature.roots.dead + deathRateOfRoots
           global cropYield[aDay].temperature.leaves.dead = cropYield[aDay-1].temperature.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
           global cropYield[aDay].dailyTemperatureGrowth.stem.dead = deathRateStem
           global cropYield[aDay].temperature.stem.dead = cropYield[aDay-1].temperature.stem.dead + deathRateStem
+          global cropYield[aDay].temperature.storage.dead = 0.0
 
-#         total
-          global cropYield[aDay].temperature.total.living = cropYield[aDay].temperature.leaves.living + cropYield[aDay].temperature.stem.living
+  #       total
+          global cropYield[aDay].temperature.total.living = cropYield[aDay].temperature.leaves.living + cropYield[aDay].temperature.stem.living + cropYield[aDay].temperature.storage.living
           global cropYield[aDay].temperature.total.dead = cropYield[aDay].temperature.leaves.dead + cropYield[aDay].temperature.stem.dead
 
-#         mowing
-          mowingRequired = false
-          if gettingMowingDaysTemperature
-            if (cropYield[aDay].temperature.total.living + cropYield[aDay].temperature.total.dead > tresholdForMowing && aDay < lastAllowedMowingDay) ||
-               (aDay == lastAllowedMowingDay && cropYield[aDay].temperature.total.living + cropYield[aDay].temperature.total.dead >= tresholdForLastMowing)
-              global mowingRequired = true
-              global nMowingDaysTemperature += 1
-              resize!(mowingDayTemperature, nMowingDaysTemperature)
-              global mowingDayTemperature[nMowingDaysTemperature] = aDay
-            end
-          else
-            for i in 1:nMowingDaysTemperature
-              if mowingDayTemperature[i] == aDay
-                global mowingRequired = true
-                break
-              end
-            end
-          end
+  #       lai
+          global cropYield[aDay].temperature.lai = cropYield[aDay].temperature.leaves.living * interpolate(SpecificLeafAreaDvs, cropYield[aDay].temperature.dvs)
 
-          if mowingRequired
-            global lastDayMowedTemperature = aDay
-            mowed = cropYield[aDay].temperature.total.living + cropYield[aDay].temperature.total.dead - 700.0
-            if mowed < 2000.0
-              global delayInTemperatureRegrowth = 2
-            else
-              if mowed < 4000.0
-                global delayInTemperatureRegrowth = 3
-              else
-                global delayInTemperatureRegrowth = 4
-              end
-            end
-
-            global cropYield[aDay].dailyTemperatureGrowth.total.living = 0.0
-            global cropYield[aDay].dailyTemperatureGrowth.total.dead = 0.0
-            global cropYield[aDay].temperature.total.living = 700.0
-            global cropYield[aDay].temperature.total.dead = 0.0
-
-            global cropYield[aDay].dailyTemperatureGrowth.mowed = mowed
-
-            fl = interpolate(GrowthPartToLeavesDaynumber, t)
-            fs = interpolate(GrowthPartToStemsDaynumber, t)
-
-            global cropYield[aDay].temperature.leaves.living = fl * 700.0
-            global cropYield[aDay].temperature.stem.living = fs * 700.0
-            global cropYield[aDay].temperature.leaves.dead = fl * 0.0
-            global cropYield[aDay].temperature.stem.dead = fs * 0.0
-          end
+  #        println(aDay, "   ", cropYield[aDay].temperature.storage.living, "   ", cropYield[aDay].temperature.lai)
+        catch e
+          println("???ERROR in temperatureCropGrowth: ",e)
         end
-        global cropYield[aDay].temperature.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].temperature.roots.living + cropYield[aDay].temperature.roots.dead)
-        global cropYield[aDay].temperature.lai = cropYield[aDay].temperature.leaves.living * interpolate(SpecificLeafAreaDaynumber, 0.0)
-        global cropYield[aDay].temperature.mowed = cropYield[aDay-1].temperature.mowed + mowed
-#        println(aDay,"   ",cropYield[aDay].temperature.total.living,"   ",cropYield[aDay-1].temperature.mowed,"    ",cropYield[aDay].temperature.mowed, "   ", mowed)
-      catch e
-        println("???ERROR in Grass.temperatureGrassGrowth: ",e)
+      finally
       end
-    finally
     end
-  end
 
-  function readDeltaresData(aDay :: Int64)
-    dataRead = nothing
-    try
+    function actualCropGrowth(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aMoisture :: Float64, aTemperature :: Float64)
       try
-        baseFileName = "/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/DataDeltares/"
-        dataFile = "profiel" * string(profile) * "/sim_" * string(aDay+364) * "c" * string(position) * ".csv"
-        dataFile = baseFileName * dataFile
-        dataRead = CSV.read(dataFile, DataFrame)
-#        dataRead[:,"Temperature"] = dataRead[:,"Temperature"] .- 273.15
-        dataRead[:,"Head"] = (dataRead[:,"Head"] .- dataRead[:, "Y"]) .* 100.0
-      catch e
-        println("???ERROR in Grass.readDeltaresData: ", e)
-      end
-    finally
-#      println(dataRead)
-    end
-    return dataRead
-  end
+        try
 
-  function moistureFactor(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64, aData :: DataFrame)
+          fMoisture = aMoisture
+          fTemperature = aTemperature
+
+          t =convert(Float64, aDay)
+          avrad = 1000.0 * aMeteo.radiation
+          scv = 0.2
+
+  #       Declination and solar constant for this day
+          declination = -asin(sind(23.45) * cos(2.0 * pi * (t+10) /365.0))
+          solarConstant  = 1370.0 * (1.0 + 0.033 * cos(2.0*pi*t/365.0))
+
+  #       calculation of daylength from intermediate variables
+  #       SINLD, COSLD and AOB
+          sinld = sind(latitude)*sin(declination)
+          cosld = cosd(latitude)*cos(declination)
+          aob = sinld/cosld
+
+  #       Calculate solution for base=0 degrees
+          if abs(aob) <= 1.0
+            daylength = 12.0 * (1.0 + 2.0 * asin(aob) / pi)
+  #         integrals of sine of solar height
+            dsinb  = 3600.0 * (daylength * sinld + 24.0 * cosld * sqrt(1.0-aob*aob)/pi)
+            dsinbe = 3600.0 * (daylength * (sinld + 0.40 * (sinld* sinld + cosld * cosld * 0.5)) + 12.0 * cosld * (2.0 + 3.0 * 0.4 * sinld) * sqrt(1.0 - aob * aob)/pi)
+          else
+            if aob > 1.0
+               daylength = 24.0
+            end
+            if aob < 1.0
+              daylength =  0.0
+            end
+  #         integrals of sine of solar height
+            dsinb  = 3600.0 * (daylength * sinld)
+            dsinbe = 3600.0 * (daylength * (sinld + 0.4 * (sinld * sinld + cosld * cosld * 0.5)))
+          end
+
+  #       Calculate solution for base =-4 (ANGLE) degrees
+          angle = -4.0
+          aob_corr = (-sind(angle) + sinld)/cosld
+          if abs(aob_corr) <= 1.0
+            daylp = 12.0 * (1.0 + 2.0 * asin(aob_corr) / pi)
+           else
+            if aob_corr > 1.0
+               daylp = 24.0
+            end
+            if aob_corr < -1.0
+              daylp =  0.0
+            end
+          end
+
+  #       extraterrestrial radiation and atmospheric transmission
+          angot  = solarConstant * dsinb
+  #       Check for daylength=0 as in that case the angot radiation is 0 as well
+          atmtr = 0.0
+          if daylength > 0.0
+            atmtr = avrad / angot
+          end
+
+  #       estimate fraction diffuse irradiation
+          frdif = 0.0
+          if atmtr > 0.75
+            frdif = 0.23
+          end
+          if atmtr < 0.75 && atmtr > 0.35
+            frdif = 1.33 - 1.46 * atmtr
+          end
+          if atmtr <= 0.35 && atmtr > 0.07
+            frdif = 1.0 - 2.3 * (atmtr - 0.07) * (atmtr - 0.07)
+          end
+          if atmtr <= 0.07
+            frdif = 1.0
+          end
+          difpp = frdif * atmtr * 0.5 * solarConstant
+
+          amax = interpolate(AssimilationRateDvs,cropYield[aDay].actual.dvs) * interpolate(AmaxReductionAverageAirTemp, aMeteo.aveTemp)
+
+  #       potential growth
+          dtga  = 0.0
+          if amax > 0.0 && cropYield[aDay-1].actual.lai > 0.0
+            for i in 1:3
+              hour = 12.0 + daylength * (Gauss3x[i] - 0.5)
+              sinb = max(0.0, sinld + cosld *cos(2.0 * pi * (hour + 12.0) / 24.0))
+              par = 0.5 * avrad * sinb * (1.0 + 0.4 * sinb) / dsinbe
+              pardif = min(par, sinb * difpp)
+              pardir = par - pardif
+
+  #           extinction coefficients kDif,kDirBL,kDirT, start of assim
+              refh   = (1.0 - sqrt(1.0 - scv)) / (1.0 + sqrt(1.0 - scv))
+              refs   = refh * 2.0 / (1.0 + 1.6 * sinb)
+              kDirbl = (0.5 / sinb) * kDif / (0.8 * sqrt(1.0 - scv))
+              kDirt  = kDirbl * sqrt(1.0 - scv)
+
+  #           three-point Gaussian integration over LAI
+              fgros  = 0.0
+              for j in 1:3
+                laic   = cropYield[aDay-1].potential.lai * Gauss3x[j]
+  #             absorbed diffuse radiation (VISDF),light from direct
+  #             origine (VIST) and direct light(VISD)
+                visdf  = (1.0 - refs) * pardif * kDif * exp(-kDif * laic)
+                vist   = (1.0 - refs) * pardir * kDirt * exp(-kDirt * laic)
+                visd   = (1.0 - scv) * pardir * kDirbl * exp(-kDirbl*laic)
+  #             absorbed flux in W/m2 for shaded leaves and assimilation
+                visshd = visdf + vist - visd
+                fgrsh  = amax * (1.0 - exp(-visshd * eff / max(2.0,amax)))
+  #             direct light absorbed by leaves perpendicular on direct
+  #             beam and assimilation of sunlit leaf area
+                vispp  = (1.0 - scv) * pardir / sinb
+                fgrsun = fgrsh
+                if vispp > 0.0
+                  fgrsun = amax * (1.0 - (amax - fgrsh) * (1.0-exp(-vispp * eff / max(2.0,amax))) / (eff * vispp))
+                end
+  #             fraction of sunlit leaf area (FSLLA) and local assimilation rate (FGL)
+                fslla  = exp(-kDirbl * laic)
+                fgl    = fslla * fgrsun + (1.0 - fslla) * fgrsh
+  #             integration
+                fgros  += fgl * Gauss3w[j]
+              end
+              fgros  *=  cropYield[aDay-1].actual.lai
+  #           end of assim
+              dtga += fgros * Gauss3w[i]
+            end
+            dtga = dtga * daylength
+          end
+
+  #          println(dtga)
+  #          exit(0)
+
+  #       correction for low minimum temperature
+          dtga *= interpolate(AmaxReductionMinAirTemp, aMeteo.minTemp)
+  #       potential assimilation in kg ch2o per ha
+          pgass = dtga * 30.0 / 44.0
+
+  #       water stress reduction of pgass to gass and limited attainable maximum
+          gass = pgass * fTemperature * fMoisture
+
+  #       relative management factor that reduces crop growth
+          gass = gass * relmf
+
+  #       respiration and partitioning of carbohydrates between growth and maintenance respiration
+          rmres = (rmr * cropYield[aDay-1].actual.roots.living +
+                  rml * cropYield[aDay-1].actual.leaves.living +
+                  rmo * cropYield[aDay-1].actual.storage.living +
+                  rms * cropYield[aDay-1].actual.stem.living) *
+                  interpolate(SenescenceReductionDvs,t)
+          teff = q10^((aMeteo.aveTemp - 25.0) / 10.0)
+          mres = min(gass, rmres * teff)
+          asrc = gass - mres
+  #       println(t,"   ",asrc,"   ",gass,"   ",mres,"    ",rmres,"    ",teff)
+
+  #       partitioning factors
+          dvs = cropYield[aDay].actual.dvs
+          fr = interpolate(GrowthPartToRootsDvs, dvs)
+          fl = interpolate(GrowthPartToLeavesDvs, dvs)
+          fs = interpolate(GrowthPartToStemsDvs, dvs)
+          fso = interpolate(GrowthPartToStorageDvs, dvs)
+  #       check on partitioning
+          fcheck = fr + (fl + fs + fso) * (1.0 - fr) - 1.0
+          if abs(fcheck) > 0.0001
+            println("???ERROR in partitioning: sum=",fcheck)
+          end
+
+  #       dry matter increase
+          cvf = 1.0 / ((fl / cvl + fs / cvs + fso / cvo) * (1.0 - fr) +fr / cvr)
+          dmi = cvf * asrc
+  #       println(dmi)
+  #       check on carbon balance
+          ccheck = (gass - mres - (fr + (fl + fs + fso) * (1.0 - fr)) * dmi / cvf) / max(0.0001,gass)
+          if abs(ccheck) > 0.0001
+            println("???ERROR: The carbon balance is not correct")
+          end
+
+  #       growth rate by plant organ
+
+  #       growth rate roots and aerial parts
+  #       after reaching a live weight of wrtmax(default 2500 kg), the
+  #       growth of the roots is balanced by the death of root tissue
+          deathRateOfRoots = fTemperature * cropYield[aDay-1].actual.roots.living * interpolate(RelativeDeathRateOfRootsDvs,dvs)
+          growthRateOfRoots = fr * dmi
+          newWeight = cropYield[aDay-1].actual.roots.living + growthRateOfRoots - deathRateOfRoots
+          if newWeight > maximumRootWeight
+            growthRateOfRoots = max(0.0, growthRateOfRoots  - (newWeight - maximumRootWeight))
+            deathRateOfRoots = max(0.0, cropYield[aDay-1].actual.roots.living + growthRateOfRoots - maximumRootWeight)
+          end
+  #       println("gr=", growthRateOfRoots,"   dr=", deathRateOfRoots, "  living=", cropYield[aDay-1].actual.roots.living, "  dead=",cropYield[aDay-1].actual.roots.dead)
+
+  #       growth rate leaves
+  #       weight of new leaves
+          admi = (1.0 - fr) * dmi
+          growthRateLeaves = fl * admi
+
+  #       death of leaves due to water stress or high lai
+          dslv1 = growthRateLeaves * (1.0 - fMoisture) * RelativeDeathRateOfLeavesByWaterStress
+          laicr = 3.2/kDif
+          dslv2 = cropYield[aDay-1].actual.leaves.living * max(0.0, min(0.03,0.03 * (cropYield[aDay-1].actual.lai - laicr) / laicr))
+          dslv3 = growthRateLeaves * abs(1.0 - fTemperature) * RelativeDeathRateOfLeavesByWaterStress
+          deathRateLeavesLai = max(dslv1, dslv2, dslv3)
+
+  #       death of leaves due to exceeding life span;
+  #       leaf death is imposed on array until no more leaves have
+  #       to die or all leaves are gone
+
+          deathRateLeavesAge = 0.0
+          fysdel = max(0.0, (aMeteo.aveTemp - thresholdTempLeafAgeing)/(35.0 - thresholdTempLeafAgeing))
+          for i in dayOfEmergence : aDay-1
+            cropYield[i].actual.leaveAge += fysdel
+            if cropYield[i].actual.leaveAge > maxAgeOfLeaves && cropYield[i].actual.leaves.living > 0.0
+              if cropYield[i].dailyActualGrowth.leaves.living > 0.0
+                deathRateLeavesAge += cropYield[i].dailyActualGrowth.leaves.living
+                global cropYield[i].dailyActualGrowth.leaves.dead += cropYield[i].dailyActualGrowth.leaves.living
+                global cropYield[i].dailyActualGrowth.leaves.living = 0.0
+              end
+            end
+          end
+
+  #       leaf area not to exceed exponential growth curve
+          glaiexp = 0.0
+          slatpot = interpolate(SpecificLeafAreaDvs, dvs)
+          if cropYield[aDay-1].actual.laiExp < 6.0
+            dteff = max(0.0, aMeteo.aveTemp - thresholdTempLeafAgeing)
+            glaiexp = cropYield[aDay-1].actual.laiExp * dteff * rgrlai
+            glasol = growthRateLeaves * slatpot
+            gla = min(glaiexp,glasol)
+  #         adjustment of specific leaf area of youngest leaf class
+            if growthRateLeaves > 0.0
+              slat = gla/growthRateLeaves
+            end
+          end
+
+  #       growth rate stems
+          wst = cropYield[aDay-1].actual.stem.living
+          growthRateStem = fs*admi
+  #       death of stems due to water stress
+          deathRateStem1 = growthRateStem * fTemperature * (1.0 - fTemperature) * RelativeDeathRateOfLeavesByWaterStress
+  #       death of stems due to ageing
+          deathRateStem2 = interpolate(RelativeDeathRateOfStemsDvs, dvs) * wst
+          deathRateStem = deathRateStem1 + deathRateStem2
+
+  #       growth rate storage organs
+          growthRateStorage = fso * admi
+
+  #       lai in case of exponential growthRateStem
+          global cropYield[aDay].actual.laiExp += glaiexp
+
+  #         integrals of the crop
+  #         dry weight of living plant organs
+          global cropYield[aDay].dailyActualGrowth.leaves.living = growthRateLeaves - deathRateLeavesLai
+          global cropYield[aDay].actual.leaves.living = max(0.0, cropYield[aDay-1].actual.leaves.living + growthRateLeaves - deathRateLeavesLai - deathRateLeavesAge)
+          global cropYield[aDay].dailyActualGrowth.roots.living = growthRateOfRoots
+          global cropYield[aDay].actual.roots.living = cropYield[aDay-1].actual.roots.living + growthRateOfRoots - deathRateOfRoots
+          global cropYield[aDay].dailyActualGrowth.stem.living = growthRateStem - deathRateStem
+          global cropYield[aDay].actual.stem.living = cropYield[aDay-1].actual.stem.living + growthRateStem - deathRateStem
+          global cropYield[aDay].actual.storage.living = cropYield[aDay-1].actual.storage.living + growthRateStorage
+
+  #       dry weight of dead plant organs (roots,leaves & stems)
+          global cropYield[aDay].dailyActualGrowth.roots.dead =  deathRateOfRoots
+          global cropYield[aDay].actual.roots.dead = cropYield[aDay-1].actual.roots.dead + deathRateOfRoots
+          global cropYield[aDay].actual.leaves.dead = cropYield[aDay-1].actual.leaves.dead + deathRateLeavesLai + deathRateLeavesAge
+          global cropYield[aDay].dailyActualGrowth.stem.dead = deathRateStem
+          global cropYield[aDay].actual.stem.dead = cropYield[aDay-1].actual.stem.dead + deathRateStem
+          global cropYield[aDay].actual.storage.dead = 0.0
+
+  #       total
+          global cropYield[aDay].actual.total.living = cropYield[aDay].actual.leaves.living + cropYield[aDay].actual.stem.living + cropYield[aDay].actual.storage.living
+          global cropYield[aDay].actual.total.dead = cropYield[aDay].actual.leaves.dead + cropYield[aDay].actual.stem.dead
+
+  #       lai
+          global cropYield[aDay].actual.lai = cropYield[aDay].actual.leaves.living * interpolate(SpecificLeafAreaDvs, cropYield[aDay].actual.dvs)
+
+  #        println(aDay, "   ", cropYield[aDay].actual.storage.living, "   ", cropYield[aDay].actual.lai)
+        catch e
+          println("???ERROR in actualCropGrowth: ",e)
+        end
+      finally
+      end
+    end
+
+  function moistureFactor(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64)
     fMoisture = 0.0
     try
       try
@@ -1933,54 +1825,125 @@ module Potato
 
         node = 1
         head = -1.0
-        while node < size(aData,1)
-          node += 1
-          dz = aData[node-1,"Y"] - aData[node,"Y"]
-          head = 0.5 * (aData[node-1,"Head"] + aData[node,"Head"])
-          if aDepth >= aData[node,"Y"]
-            dz = aData[node-1,"Y"] - aDepth
-            node = size(aData,1)
-            h = aData[node-1,"Head"] + (aData[node,"Head"] - aData[node-1,"Head"]) * (aDepth - aData[node-1,"Y"]) / (aData[node,"Y"] - aData[node-1,"Y"])
-            head = 0.5 * (aData[node-1,"Head"] + h)
+
+        dz = -1.0 * sensorDepth[1]
+        head = simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1]
+        fMoisture += dz * interpolate(moistureUptakePressureHead, head)
+
+        if aDepth < sensorDepth[1]
+          while node < size(sensorDepth,1)
+            node += 1
+            dz = sensorDepth[node-1] - sensorDepth[node]
+            head = 0.5 * (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1])
+            if aDepth >= sensorDepth[node]
+              dz = sensorDepth[node-1] - aDepth
+              node = size(sensorDepth,1)
+              h = simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1] -
+                  simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node]) * (aDepth - sensorDepth[node-1]) / (sensorDepth[node] - sensorDepth[node-1])
+              head = 0.5 * (simulatedHead[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + h)
+            end
+            fMoisture += dz * interpolate(moistureUptakePressureHead, head)
           end
-          fMoisture += dz * interpolate(moistureUptakePressureHead, head)
         end
         fMoisture = fMoisture / abs(aDepth)
 #        println(fMoisture)
 #        exit(0)
       catch e
-        println("???ERROR in Grass.moistureFactor: ",e)
+        println("???ERROR in Potato.moistureFactor: ",e)
       end
     finally
     end
     return fMoisture
   end
 
-  function temperatureFactor(aDepth :: Float64, aData :: DataFrame)
+  function temperatureFactorAmax(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64, aDvs :: Float64)
     fTemperature = 0.0
     try
       try
+        dz = -1.0 * sensorDepth[1]
         node = 1
-        temp = -1.0
-        while node < size(aData,1)
-          node += 1
-          dz = aData[node-1,"Y"] - aData[node,"Y"]
-          temp = 0.5 * (aData[node-1,"Temperature"] + aData[node,"Temperature"])
-#          temp = 26.0
-          if aDepth >= aData[node,"Y"]
-            dz = aData[node-1,"Y"] - aDepth
-            node = size(aData,1)
-            t = aData[node-1,"Temperature"] + (aData[node,"Temperature"] - aData[node-1,"Temperature"]) * (aDepth - aData[node-1,"Y"]) / (aData[node,"Y"] - aData[node-1,"Y"])
-            temp = 0.5 * (aData[node-1,"Temperature"] + t)
-#            temp = 26.0
+        temp = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1]
+        if aDvs < 1.0
+          fTemperature += dz * interpolate(AmaxFactorSoilTemperature1, temp)
+        else
+          fTemperature += dz * interpolate(AmaxFactorSoilTemperature2, temp)
+        end
+
+        if aDepth < sensorDepth[1]
+          while node < size(sensorDepth,1)
+            node += 1
+            dz = sensorDepth[node-1] - sensorDepth[node]
+            temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1])
+            if aDepth >= sensorDepth[node]
+              dz = sensorDepth[node-1] - aDepth
+              node = size(sensorDepth,1)
+              t = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] +
+                  (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1] -
+                  simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node]) *
+                  (aDepth - sensorDepth[node-1]) / (sensorDepth[node] - sensorDepth[node-1])
+              temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + t)
+            end
+            if aDvs < 1.0
+              fTemperature += dz * interpolate(AmaxFactorSoilTemperature1, temp)
+            else
+              fTemperature += dz * interpolate(AmaxFactorSoilTemperature2, temp)
+            end
           end
-          fTemperature += dz * interpolate(growthFactorTemperature, temp)
         end
         fTemperature = fTemperature / abs(aDepth)
 #        println(aDepth, "   ", temp, "   ", fTemperature)
 #        exit(0)
       catch e
-        println("???ERROR in Grass.temperatureFactor: ",e)
+        println("???ERROR in Potato.temperatureFactorAmax: ",e)
+      end
+    finally
+    end
+    return fTemperature
+  end
+
+  function temperatureFactorDvs(aMeteo :: Main.Control.Types.Meteo, aDepth :: Float64, aDvs :: Float64)
+    fTemperature = 0.0
+    try
+      try
+        node = 1
+        temp = -1.0
+        dz = -1.0 * sensorDepth[1]
+        node = 1
+        temp = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1]
+        if aDvs < 1.0
+          fTemperature += dz * interpolate(DvsFactorSoilTemperature1, temp)
+        else
+          fTemperature += dz * interpolate(DvsFactorSoilTemperature2, temp)
+        end
+
+        if aDepth < sensorDepth[1]
+          while node < size(sensorDepth,1)
+            node += 1
+            dz = sensorDepth[node-1] - sensorDepth[node]
+            temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1])
+#          temp = 26.0
+            if aDepth >= sensorDepth[node]
+              dz = sensorDepth[node-1] - aDepth
+              node = size(sensorDepth,1)
+              t = simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] +
+                  (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node + 1] -
+                   simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node]) *
+                   (aDepth - sensorDepth[node-1]) / (sensorDepth[node] - sensorDepth[node-1])
+              temp = 0.5 * (simulatedTemperature[aMeteo.dayofyear, (position-1) * size(sensorDepth,1) + node] + t)
+#            temp = 26.0
+            end
+            if aDvs < 1.0
+              fTemperature += dz * interpolate(DvsFactorSoilTemperature1, temp)
+            else
+              fTemperature += dz * interpolate(DvsFactorSoilTemperature2, temp)
+            end
+          end
+        end
+        fTemperature = fTemperature / abs(aDepth)
+#        println(aDepth, "   ", temp, "   ", fTemperature)
+#        exit(0)
+      catch e
+        println("???ERROR in Potato.temperatureFactorDvs: ",e)
       end
     finally
     end
@@ -1992,27 +1955,27 @@ module Potato
       try
         if aDay > 1
 #         potential
-          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kdif * kdir * cropYield[aDay-1].potential.lai))
+          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kDif * kDir * cropYield[aDay-1].potential.lai))
           global cropYield[aDay].dailyPotentialGrowth.potentialPlantEvaporation = epp
           global cropYield[aDay].potential.potentialPlantEvaporation =  cropYield[aDay-1].potential.potentialPlantEvaporation + epp
 
 #          actual
-          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kdif * kdir * cropYield[aDay-1].actual.lai))
+          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kDif * kDir * cropYield[aDay-1].actual.lai))
           global cropYield[aDay].dailyActualGrowth.potentialPlantEvaporation = epp
           global cropYield[aDay].actual.potentialPlantEvaporation =  cropYield[aDay-1].actual.potentialPlantEvaporation + epp
 
 #         temperature
-          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kdif * kdir * cropYield[aDay-1].temperature.lai))
+          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kDif * kDir * cropYield[aDay-1].temperature.lai))
           global cropYield[aDay].dailyTemperatureGrowth.potentialPlantEvaporation = epp
           global cropYield[aDay].temperature.potentialPlantEvaporation =  cropYield[aDay-1].temperature.potentialPlantEvaporation + epp
 
 #         moisture
-          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kdif * kdir * cropYield[aDay-1].moisture.lai))
+          epp = aMeteo.evapPenman * (1.0 - exp(-1.0 * kDif * kDir * cropYield[aDay-1].moisture.lai))
           global cropYield[aDay].dailyMoistureGrowth.potentialPlantEvaporation = epp
           global cropYield[aDay].moisture.potentialPlantEvaporation =  cropYield[aDay-1].moisture.potentialPlantEvaporation + epp
         end
       catch e
-        println("???ERROR in Grass.computePotentialPlantEvaporation: ", e)
+        println("???ERROR in Potato.computePotentialPlantEvaporation: ", e)
       end
     finally
     end
@@ -2031,85 +1994,208 @@ module Potato
         global cropYield[aDay].temperature.actualPlantEvaporation = cropYield[aDay-1].temperature.actualPlantEvaporation + cropYield[aDay].dailyTemperatureGrowth.actualPlantEvaporation
 
       catch e
-        println("???ERROR in Grass.actualPlantEvaporation: ", e)
+        println("???ERROR in Potato.actualPlantEvaporation: ", e)
       end
     finally
     end
   end
 
-  function storeDeltaresData(aData :: DataFrame, aDay :: Int64)
+  function storeDeltaresData(aDay :: Int64)
     try
       try
-        global soilTemperatureAt5cm[aDay] = aData[2,"Temperature"]
-        global soilTemperatureAt20cm[aDay] = aData[5,"Temperature"]
-        global soilTemperatureAt40cm[aDay] = aData[9,"Temperature"]
-        global pressureHeadAt5cm[aDay] = aData[2,"Head"]
-        global pressureHeadAt20cm[aDay] = aData[5,"Head"]
-        global pressureHeadAt40cm[aDay] = aData[9,"Head"]
+        global soilTemperatureAt10cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 2]
+        global soilTemperatureAt20cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 3]
+        global soilTemperatureAt30cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 4]
+        global soilTemperatureAt40cm[aDay] = simulatedTemperature[aDay, (position-1) * size(sensorDepth,1) + 5]
+        global pressureHeadAt10cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 2]
+        global pressureHeadAt20cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 3]
+        global pressureHeadAt30cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 4]
+        global pressureHeadAt40cm[aDay] = simulatedHead[aDay, (position-1) * size(sensorDepth,1) + 5]
   #      println(pressureHeadAt40cm[aDay])
       catch e
-        println("???ERROR in Grass.storeDeltaresData: ", e)
+        println("???ERROR in Potato.storeDeltaresData: ", e)
+      end
+    finally
+    end
+  end
+
+  function computeDvsPotential(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64)
+    try
+      try
+        deltaTempSum = interpolate(deltaTempSumAirTemp, aMeteo.aveTemp)
+        deltaDvs = 0.0
+        if cropYield[aDay].potential.dvs < 1.0
+          deltaDvs = deltaTempSum / degDaysEmergenceAnthesis
+        else
+          deltaDvs = deltaTempSum / degDaysAnthesisMaturity
+        end
+        cropYield[aDay].dailyPotentialGrowth.tempSum = deltaTempSum
+        cropYield[aDay].dailyPotentialGrowth.dvs = deltaDvs
+        cropYield[aDay].potential.tempSum += deltaTempSum
+        cropYield[aDay].potential.dvs += deltaDvs
+
+#        println(aDay, "   ", aMeteo.aveTemp, "  ", deltaTempSum, "  ", deltaDvs, "  ",cropYield[aDay].potential.tempSum, "  ",cropYield[aDay].potential.dvs)
+      catch e
+        println("???ERROR in Potato.computeDvsPotential: ",e)
+      end
+    finally
+    end
+  end
+
+  function computeDvsMoisture(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64)
+    try
+      try
+        deltaTempSum = interpolate(deltaTempSumAirTemp, aMeteo.aveTemp)
+        deltaDvs = 0.0
+          if cropYield[aDay].moisture.dvs < 1.0
+            deltaDvs = deltaTempSum / degDaysEmergenceAnthesis
+          else
+            deltaDvs = deltaTempSum / degDaysAnthesisMaturity
+          end
+          cropYield[aDay].dailyMoistureGrowth.tempSum = deltaTempSum
+          cropYield[aDay].dailyMoistureGrowth.dvs = deltaDvs
+          cropYield[aDay].moisture.tempSum += deltaTempSum
+          cropYield[aDay].moisture.dvs += deltaDvs
+
+  #        println(aDay, "   ", aMeteo.aveTemp, "  ", deltaTempSum, "  ", deltaDvs, "  ",cropYield[aDay].potential.tempSum, "  ",cropYield[aDay].potential.dvs)
+        catch e
+          println("???ERROR in Potato.computeDvsMoisture: ",e)
+        end
+      finally
+      end
+    end
+
+    function computeDvsTemperature(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aFactor :: Float64)
+      try
+        try
+          deltaTempSum = interpolate(deltaTempSumAirTemp, aMeteo.aveTemp)
+          deltaDvs = 0.0
+            if cropYield[aDay].temperature.dvs < 1.0
+              deltaDvs = deltaTempSum / degDaysEmergenceAnthesis
+            else
+              deltaDvs = deltaTempSum / degDaysAnthesisMaturity
+            end
+            deltaDvs *= aFactor
+            cropYield[aDay].dailyTemperatureGrowth.tempSum = deltaTempSum
+            cropYield[aDay].dailyTemperatureGrowth.dvs = deltaDvs
+            cropYield[aDay].temperature.tempSum += deltaTempSum
+            cropYield[aDay].temperature.dvs += deltaDvs
+
+    #        println(aDay, "   ", aMeteo.aveTemp, "  ", deltaTempSum, "  ", deltaDvs, "  ",cropYield[aDay].potential.tempSum, "  ",cropYield[aDay].potential.dvs)
+          catch e
+            println("???ERROR in Potato.computeDvsTemperature: ",e)
+          end
+        finally
+        end
+      end
+
+    function computeDvsActual(aMeteo :: Main.Control.Types.Meteo, aDay :: Int64, aFactor :: Float64)
+        try
+          try
+            deltaTempSum = interpolate(deltaTempSumAirTemp, aMeteo.aveTemp)
+            deltaDvs = 0.0
+              if cropYield[aDay].actual.dvs < 1.0
+                deltaDvs = deltaTempSum / degDaysEmergenceAnthesis
+              else
+                deltaDvs = deltaTempSum / degDaysAnthesisMaturity
+              end
+              deltaDvs *= aFactor
+              cropYield[aDay].dailyActualGrowth.tempSum = deltaTempSum
+              cropYield[aDay].dailyActualGrowth.dvs = deltaDvs
+              cropYield[aDay].actual.tempSum += deltaTempSum
+              cropYield[aDay].actual.dvs += deltaDvs
+
+      #        println(aDay, "   ", aMeteo.aveTemp, "  ", deltaTempSum, "  ", deltaDvs, "  ",cropYield[aDay].potential.tempSum, "  ",cropYield[aDay].potential.dvs)
+            catch e
+              println("???ERROR in Potato.computeDvsActual: ",e)
+            end
+          finally
+          end
+        end
+
+  function computeRootDepths(aDay :: Int64)
+    try
+      try
+        global cropYield[aDay].potential.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].potential.roots.living)
+        global cropYield[aDay].actual.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].actual.roots.living)
+        global cropYield[aDay].moisture.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].moisture.roots.living)
+        global cropYield[aDay].temperature.rootingDepth = interpolate(RootDepthRootWeight,cropYield[aDay].temperature.roots.living)
+      catch e
+        println("???ERROR in Potato.computeRootDepths: ",e)
       end
     finally
     end
   end
 
   function computeGrowth(aMeteo :: Main.Control.Types.Meteo)
-#    x1 = interpolate(CropFactorDaynumber,1.2)
-#    x2 = interpolate(SpecificLeafAreaDaynumber,135.5)
-#    x3 = interpolate(AssimilationRateDayNumber, 210.0)
-#    x4 = interpolate(AmaxReductionMinAirTemp, 10.0)
-#    println(x1, "   ", x2,"    ", x3,"    ",x4)
     fMoisture = 1.0
     fTemperature = 1.0
 
     try
       try
+        fTemperatureAmax = 1.0
+        fTemperatureDvs = 1.0
         day = aMeteo.dayofyear
 #        println(day)
+        copyPotentialValues(day)
+        copyActualValues(day)
+        copyMoistureValues(day)
+        copyTemperatureValues(day)
+
         global cropYield[day].dayofyear = day
         global cropYield[day].potentialEp = aMeteo.evapPenman
 
 #        read soil data
-        dataDeltares = readDeltaresData(day)
-        storeDeltaresData(dataDeltares, day)
+        storeDeltaresData(day)
 
-#        grassIsGrowing = true
-#        aMeteo.radiation = 7000.0
-        if !grassIsGrowing
-          beforeGrassGrowth(aMeteo)
-#          println(temperatureSum)
+        if !isPlanted
+          beforePlanting(aMeteo)
         else
+          if !cropIsGrowing
+            beforeCropGrowth(aMeteo)
+#            println(temperatureSum)
+          else
 #         compute potential plant evaporation
           computePotentialPlantEvaporation(aMeteo, day)
 #         read data from Deltares
-          drz = -0.01 * cropYield[day-1].actual.rootingDepth
-          fMoisture = moistureFactor(aMeteo, drz, dataDeltares)
-          fTemperature = temperatureFactor(drz, dataDeltares)
+          drz = cropYield[day-1].actual.rootingDepth
+          fMoisture = moistureFactor(aMeteo, drz)
           actualPlantEvaporation(fMoisture, day)
 #          println(fMoisture, "   ", fTemperature)
 #         potential growth
-          potentialGrassGrowth(aMeteo, day)
-#         actual growth
-          actualGrassGrowth(aMeteo, day, fMoisture, fTemperature)
-          moistureGrassGrowth(aMeteo, day, fMoisture)
-          temperatureGrassGrowth(aMeteo,day, fTemperature)
+          if cropYield[day].potential.dvs < 2.0
+            computeDvsPotential(aMeteo, day)
+            potentialCropGrowth(aMeteo, day)
+          end
+          if cropYield[day].moisture.dvs < 2.0
+            computeDvsMoisture(aMeteo,day)
+            moistureCropGrowth(aMeteo, day, fMoisture)
+          end
+          if cropYield[day].temperature.dvs < 2.0
+            fTemperatureAmax = temperatureFactorAmax(aMeteo, drz, cropYield[day].temperature.dvs)
+            fTemperatureDvs = temperatureFactorDvs(aMeteo, drz, cropYield[day].temperature.dvs)
+            computeDvsTemperature(aMeteo,day,fTemperatureDvs)
+            temperatureCropGrowth(aMeteo,day,fTemperatureAmax)
+          end
+          if cropYield[day].actual.dvs < 2.0
+            fTemperatureAmax = temperatureFactorAmax(aMeteo, drz, cropYield[day].actual.dvs)
+            fTemperatureDvs = temperatureFactorDvs(aMeteo, drz, cropYield[day].actual.dvs)
+            computeDvsActual(aMeteo,day,fTemperatureDvs)
+            actualCropGrowth(aMeteo,day,fMoisture,fTemperatureAmax)
+          end
+        end
         end
         global cropDate[day] = aMeteo.date
-        global cropYieldPotentialLiving[day] = cropYield[day].potential.total.living + cropYield[day].potential.total.dead
-        global cropYieldActualLiving[day] = cropYield[day].actual.total.living + cropYield[day].actual.total.dead
-        global cropYieldMoistureLiving[day] = cropYield[day].moisture.total.living + cropYield[day].moisture.total.dead
-        global cropYieldTemperatureLiving[day] = cropYield[day].temperature.total.living + cropYield[day].temperature.total.dead
-        global mowedPotential[day] = cropYield[day].potential.mowed
-        global mowedActual[day] = cropYield[day].actual.mowed
-        global mowedMoisture[day] = cropYield[day].moisture.mowed
-        global mowedTemperature[day] = cropYield[day].temperature.mowed
+        global cropYieldPotentialLiving[day] = cropYield[day].potential.storage.living
+        global cropYieldActualLiving[day] = cropYield[day].actual.storage.living
+        global cropYieldMoistureLiving[day] = cropYield[day].moisture.storage.living
+        global cropYieldTemperatureLiving[day] = cropYield[day].temperature.storage.living
         global laiPotential[day] = cropYield[day].potential.lai
         global laiActual[day] = cropYield[day].actual.lai
         global laiMoisture[day] = cropYield[day].moisture.lai
         global laiTemperature[day] = cropYield[day].temperature.lai
         global factorMoisture[day] = fMoisture
-        global factorTemperature[day] = fTemperature
+        global factorTemperature[day] = fTemperatureAmax
         global eppPotential[day] = cropYield[day].potential.potentialPlantEvaporation
         global eppActual[day] = cropYield[day].actual.potentialPlantEvaporation
         global eppMoisture[day] = cropYield[day].moisture.potentialPlantEvaporation
@@ -2119,157 +2205,184 @@ module Potato
         global epaMoisture[day] = cropYield[day].moisture.actualPlantEvaporation
         global epaTemperature[day] = cropYield[day].temperature.actualPlantEvaporation
 
-#        global cropYieldPotentialDead[day] = cropYield[day].potential.dailyGrowth.dead
+        computeRootDepths(day)
 
-  #      println(day, "   ", cropYield[day].potentialEp, "   ", cropYield[day].actualEp)
+#        println(day, "   ", cropYield[day].potential.storage.living, "   ", cropYield[day].moisture.storage.living, "   ", cropYield[day].temperature.storage.living, "   ", cropYield[day].actual.storage.living)
       catch e
-        println("???ERROR in Grass.computeGrowth: ",e)
+        println("???ERROR in Potato.computeGrowth: ",e)
     end
     finally
     end
   end
 
-  function plotGrass()
+  function plotCrop()
     try
       try
+        df = DateFormat("dd-mm-yyyy")
+        date1 = Date("01-05-2019",df)
+        date2 = Date("15-09-2019",df)
         p = Plots.Plot{Plots.GRBackend}[]
         resize!(p,8)
-        p[1] = plot(legend=:topleft, xlabel="Date", ylabel="Grass yield (kg dm/ha)", size=(750,500))
+        p[1] = plot(legend=:topleft, xlabel="Date", ylabel="Grass yield (kg dm/ha)", size=(750,500), xlims = Dates.value.([date1,date2]))
         p[1] = plot!(p[1], cropDate, cropYieldPotentialLiving, label="P", color=:darkgoldenrod2, linestyle=:solid)
         p[1] = plot!(p[1], cropDate, cropYieldActualLiving, label="A", color=:darkred, linestyle=:solid)
         p[1] = plot!(p[1], cropDate, cropYieldMoistureLiving, label="M", color=:blue, linestyle=:solid)
         p[1] = plot!(p[1], cropDate, cropYieldTemperatureLiving, label="T", color=:green2, linestyle=:solid)
 
-        p[2] = plot(legend=:topleft, xlabel="Date", ylabel="Mowed (kg dm/ha)", size=(750,500))
-        p[2] = plot!(p[2], cropDate, mowedPotential, label="P", color=:darkgoldenrod2, linestyle=:solid)
-        p[2] = plot!(p[2], cropDate, mowedActual, label="A", color=:darkred, linestyle=:solid)
-        p[2] = plot!(p[2], cropDate, mowedMoisture, label="M", color=:blue, linestyle=:solid)
-        p[2] = plot!(p[2], cropDate, mowedTemperature, label="T", color=:green2, linestyle=:solid)
+        p[2] = plot(legend=:none, xlabel="Datum", ylabel="Factor (-)", size=(750,500), xlims = Dates.value.([date1,date2]))
+        p[2] = plot!(p[2], cropDate, factorMoisture, label="Moisture", color=:red, linestyle=:solid)
+#        savefig("/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Potatoes/factor_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
 
-        p[3] = plot(legend=:topleft, xlabel="Date", ylabel="LAI (m2/m2)", size=(750,500))
+        p[3] = plot(legend=:topleft, xlabel="Date", ylabel="LAI (m2/m2)", size=(750,500), xlims = Dates.value.([date1,date2]))
         p[3] = plot!(p[3], cropDate, laiPotential, label="P", color=:darkgoldenrod2, linestyle=:solid)
         p[3] = plot!(p[3], cropDate, laiActual, label="A", color=:darkred, linestyle=:solid)
         p[3] = plot!(p[3], cropDate, laiMoisture, label="M", color=:blue, linestyle=:solid)
         p[3] = plot!(p[3], cropDate, laiTemperature, label="T", color=:green2, linestyle=:solid)
 
-        p[4] = plot(legend=:none, xlabel="Datum", ylabel="Factor (-)", size=(750,500))
-#        p[4] = plot!(p[4], cropDate, factorMoisture, label="Moisture", color=:blue, linestyle=:solid)
+        p[4] = plot(legend=:none, xlabel="Datum", ylabel="Factor (-)", size=(750,500), xlims = Dates.value.([date1,date2]))
         p[4] = plot!(p[4], cropDate, factorTemperature, label="Temperature", color=:red, linestyle=:solid)
-        savefig("/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/factor_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
+#        savefig("/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Potatoes/factor_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
 
-        p[5] = plot(legend=:topleft, xlabel="Date", ylabel="Epp (mm)", size=(750,500))
+        p[5] = plot(legend=:topleft, xlabel="Date", ylabel="Epp (mm)", size=(750,500), xlims = Dates.value.([date1,date2]))
         p[5] = plot!(p[5], cropDate, eppPotential, label="P", color=:darkgoldenrod2, linestyle=:solid)
         p[5] = plot!(p[5], cropDate, eppActual, label="A", color=:darkred, linestyle=:solid)
         p[5] = plot!(p[5], cropDate, eppMoisture, label="M", color=:blue, linestyle=:solid)
         p[5] = plot!(p[5], cropDate, eppTemperature, label="T", color=:green2, linestyle=:solid)
 
-        p[6] = plot(legend=:topleft, xlabel="Date", ylabel="Epa (mm)", size=(750,500))
+        p[6] = plot(legend=:topleft, xlabel="Date", ylabel="Epa (mm)", size=(750,500), xlims = Dates.value.([date1,date2]))
         p[6] = plot!(p[6], cropDate, epaPotential, label="P", color=:darkgoldenrod2, linestyle=:solid)
         p[6] = plot!(p[6], cropDate, epaActual, label="A", color=:darkred, linestyle=:solid)
         p[6] = plot!(p[6], cropDate, epaMoisture, label="M", color=:blue, linestyle=:solid)
         p[6] = plot!(p[6], cropDate, epaTemperature, label="T", color=:green2, linestyle=:solid)
 
-        p[7] = plot(legend=:topleft, xlabel="Date", ylabel="Temperature (C)", size=(750,500))
-        p[7] = plot!(p[7], cropDate, soilTemperatureAt5cm, label = "5 cm", color=:darkred, linestyle=:solid)
+        p[7] = plot(legend=:topleft, xlabel="Date", ylabel="Temperature (C)", size=(750,500), xlims = Dates.value.([date1,date2]))
+        p[7] = plot!(p[7], cropDate, soilTemperatureAt10cm, label = "10 cm", color=:darkred, linestyle=:solid)
         p[7] = plot!(p[7], cropDate, soilTemperatureAt20cm, label = "20 cm", color=:blue, linestyle=:solid)
+        p[7] = plot!(p[7], cropDate, soilTemperatureAt30cm, label = "30 cm", color=:aqua, linestyle=:solid)
         p[7] = plot!(p[7], cropDate, soilTemperatureAt40cm, label = "40 cm", color=:green2, linestyle=:solid)
 
-        p[8] = plot(legend=:topleft, xlabel="Date", ylabel="Pressure head (cm)", size=(750,500))
-        p[8] = plot!(p[8], cropDate, pressureHeadAt5cm, label = "5 cm", color=:darkred, linestyle=:solid)
-        p[8] = plot!(p[8], cropDate, pressureHeadAt20cm, label = "20 cm", color=:blue, linestyle=:solid)
-        p[8] = plot!(p[8], cropDate, pressureHeadAt40cm, label = "40 cm", color=:green2, linestyle=:solid)
+        x = Array{Date}(undef,2)
+        y = Array{Float64}(undef,2)
+        x[1] = cropDate[1]
+        x[2] = cropDate[size(cropDate,1)]
+        y[1] = -25.0
+        y[2] = -25.0
+        p[8] = plot(legend=:topleft, xlabel="Date", ylabel="Pressure head (cm)", size=(750,500), xlims = Dates.value.([date1,date2]), yaxis=:log)
+        p[8] = plot!(p[8], x, abs.(y), label = "limiet 1", color=:blue, linestyle=:dot)
+        y[1] = -300.0
+        y[2] = -300.0
+        p[8] = plot!(p[8], x, abs.(y), label = "limiet 2", color=:red, linestyle=:dot)
+        p[8] = plot!(p[8], cropDate, abs.(pressureHeadAt10cm), label = "10 cm", color=:darkred, linestyle=:solid)
+        p[8] = plot!(p[8], cropDate, abs.(pressureHeadAt20cm), label = "20 cm", color=:blue, linestyle=:solid)
+        p[8] = plot!(p[8], cropDate, abs.(pressureHeadAt30cm), label = "30 cm", color=:aqua, linestyle=:solid)
+        p[8] = plot!(p[8], cropDate, abs.(pressureHeadAt40cm), label = "40 cm", color=:green2, linestyle=:solid)
         pAll = plot(p..., layout=(4,2), size=(1500,2000))
 
-        savefig("/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/cropyield_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
+        savefig("/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Potatoes/cropyield_" * string(year) * "_" * string(profile) * "_" * string(position) * ".svg")
 
         display(pAll)
 
       catch e
-        println("???ERROR in Grass.plotGrass: ", e)
+        println("???ERROR in Potato.plotCrop: ", e)
       end
     finally
     end
   end
 
-  function storeOutput()
-    fileName = "/home/wesseling/DataDisk/Wesseling/Work/Warmteleiding/Output/results_" * string(year) * "_" * string(profile) * "_" * string(position) * ".txt"
+  function storeOutput(aYear :: Int64)
+    fileName = "/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/Potatoes/results_" * string(year) * "_" * string(profile) * "_" * string(position) * ".txt"
     df = DateFormat("dd-u-yyyy HH:MM:SS.sss")
     df1 = DateFormat("dd-u-yyyy")
 
     try
       try
-        myString = "Results of CropGrowth. \nDate : " * Dates.format(Dates.now(),df) * "\n\n"
-        myString *= "Item                       Potential         Actual       Moisture    Temperature\n"
+        baseDate = Dates.Date(aYear,1,1)
+        emergenceDate = Dates.format(baseDate + Dates.Day(dayOfEmergence-1), df1)
+        global actualDateEmergence = emergenceDate
 
-        myString *= "Epp (mm) till 15/10  "
-        myString *= lpad(string(floor(Int64,cropYield[289].potential.potentialPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].actual.potentialPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].moisture.potentialPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].temperature.potentialPlantEvaporation)),15," ")
-        myString *= "\n"
-
-        myString *= "Epa (mm) till 15/10  "
-        myString *= lpad(string(floor(Int64,cropYield[289].potential.actualPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].actual.actualPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].moisture.actualPlantEvaporation)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].temperature.actualPlantEvaporation)),15," ")
-        myString *= "\n"
-
-        myString *= "First harvest       "
-        s = "Unknown"
-        i = 0
-        while i < 289
-          i+=1
-          if cropYield[i].potential.mowed > 1.0
-            s = lpad(Dates.format(cropYield[i].theDate, df1), 15, " ")
-            i = break
-          end
-        end
-        myString *= s
-        s = "Unknown"
-        i = 0
-        while i < 289
-          i+=1
-          if cropYield[i].actual.mowed > 1.0
-            s = lpad(Dates.format(cropYield[i].theDate, df1), 15, " ")
+        dayMaturePotential = 1
+        yieldPotential = 0.0
+        for i in 1:365
+          if cropYield[i].potential.dvs > 2.0
+            dayMaturePotential = i
+            yieldPotential = cropYield[i].potential.storage.living
+            global potentialYield = yieldPotential
             break
           end
         end
-        myString *= s
-        s = "Unknown"
-        i = 0
-        while i < 289
-          i+=1
-          if cropYield[i].moisture.mowed > 1.0
-            s = lpad(Dates.format(cropYield[i].theDate, df1), 15, " ")
+        dateMaturePotential = Dates.format(baseDate + Dates.Day(dayMaturePotential-1),df1)
+        dayMatureActual = 1
+        yieldActual = 0.0
+        for i in 1:365
+          if cropYield[i].actual.dvs > 2.0
+            dayMatureActual = i
+            yieldActual = cropYield[i].actual.storage.living
+            global actualYield = yieldActual
             break
           end
         end
-        myString *= s
-        s = "Unknown"
-        i = 0
-        while i < 289
-          i+=1
-          if cropYield[i].temperature.mowed > 1.0
-            s = lpad(Dates.format(cropYield[i].theDate, df1), 15, " ")
+        dateMatureActual = Dates.format(baseDate + Dates.Day(dayMatureActual-1),df1)
+        global actualDateMature = dateMatureActual
+        dayMatureMoisture = 1
+        yieldMoisture = 0.0
+        for i in 1:365
+          if cropYield[i].moisture.dvs > 2.0
+            dayMatureMoisture = i
+            yieldMoisture = cropYield[i].moisture.storage.living
+            global moistureYield = yieldMoisture
             break
           end
         end
-        myString *= s
+        dateMatureMoisture = Dates.format(baseDate + Dates.Day(dayMatureMoisture-1),df1)
+        dayMatureTemperature = 1
+        yieldTemperature = 0.0
+        for i in 1:365
+          if cropYield[i].temperature.dvs > 2.0
+            dayMatureTemperature = i
+            yieldTemperature = cropYield[i].temperature.storage.living
+            global temperatureYield = yieldTemperature
+            break
+          end
+        end
+        dateMatureTemperature = Dates.format(baseDate + Dates.Day(dayMatureTemperature-1),df1)
+
+        myString = "Results of PotatoGrowth. \nDate : " * Dates.format(Dates.now(),df) * "\n\n"
+        myString *= "Item                            Potential              Actual            Moisture         Temperature\n"
+
+        myString *= "Epp (mm)             "
+        myString *= lpad(string(floor(Int64,cropYield[dayMaturePotential].potential.potentialPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureActual].actual.potentialPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureMoisture].moisture.potentialPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureTemperature].temperature.potentialPlantEvaporation)),20," ")
         myString *= "\n"
 
-        myString *= "Harvest (kg/ha)     "
-        myString *= lpad(string(floor(Int64,cropYield[289].potential.mowed)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].actual.mowed)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].moisture.mowed)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].temperature.mowed)),15," ")
+        myString *= "Epa (mm)             "
+        myString *= lpad(string(floor(Int64,cropYield[dayMaturePotential].potential.actualPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureActual].actual.actualPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureMoisture].moisture.actualPlantEvaporation)),20," ")
+        myString *= lpad(string(floor(Int64,cropYield[dayMatureTemperature].temperature.actualPlantEvaporation)),20," ")
+        myString *= "\n"
+        global actualTranspiration = cropYield[dayMatureActual].actual.actualPlantEvaporation
+
+        myString *= "Emergence            "
+        myString *= lpad(emergenceDate * " (" * string(dayOfEmergence) * ")",20," ")
+        myString *= lpad(emergenceDate * " (" * string(dayOfEmergence) * ")",20," ")
+        myString *= lpad(emergenceDate * " (" * string(dayOfEmergence) * ")",20," ")
+        myString *= lpad(emergenceDate * " (" * string(dayOfEmergence) * ")",20," ")
         myString *= "\n"
 
-        myString *= "Yield at 15 oct.     "
-        myString *= lpad(string(floor(Int64,cropYield[289].potential.total.dead + cropYield[289].potential.total.living)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].actual.total.dead + cropYield[289].actual.total.living)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].moisture.total.dead + cropYield[289].moisture.total.living)),15," ")
-        myString *= lpad(string(floor(Int64,cropYield[289].temperature.total.dead + cropYield[289].temperature.total.living)),15," ")
+        myString *= "Maturity             "
+        myString *= lpad(dateMaturePotential * " (" * string(dayMaturePotential) * ")",20," ")
+        myString *= lpad(dateMatureActual * " (" * string(dayMatureActual) * ")",20," ")
+        myString *= lpad(dateMatureMoisture * " (" * string(dayMatureMoisture) * ")",20," ")
+        myString *= lpad(dateMatureTemperature * " (" * string(dayMatureTemperature) * ")",20," ")
+        myString *= "\n"
+
+        myString *= "Harvest (kg d.m./ha) "
+        myString *= lpad(string(floor(Int64,yieldPotential)),20," ")
+        myString *= lpad(string(floor(Int64,yieldActual)),20," ")
+        myString *= lpad(string(floor(Int64,yieldMoisture)),20," ")
+        myString *= lpad(string(floor(Int64,yieldTemperature)),20," ")
         myString *= "\n"
 
         outFile = open(fileName, "w")
@@ -2282,7 +2395,7 @@ module Potato
 #        proc = 100 * dif / pot
 #        println(pot, "   ", tmp, "   ", dif, "   ", proc)
       catch e
-        println("????ERROR in Grass.storeOutput: ",e)
+        println("????ERROR in Potato.storeOutput: ",e)
         exit(0)
       end
     finally

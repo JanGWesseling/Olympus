@@ -3,6 +3,7 @@ module Control
   include("DataManager.jl")
   include("FEM.jl")
   include("Grass.jl")
+  include("Potato.jl")
   include("Meteo.jl")
   using DataFrames
   using ConfParser
@@ -11,11 +12,31 @@ module Control
   using Plots
   using GLM
   using Printf
+  using CSV
+
+  simulatedTemp = undef
+  simulatedHead = undef
 
   status = 0
   year = 0
   scenario = Array{Types.Scenario}
   meteo = Array{Types.Meteo}
+
+  potatoYield = Array{Float64}(undef,6,4)
+  potatoDateEmergence = Array{String}(undef,6,4)
+  potatoDateMature = Array{String}(undef,6,4)
+  potatoTranspiration = Array{Float64}(undef,6,4)
+
+  potatoMoisture = Array{Float64}(undef,6,4)
+  potatoTemperature = Array{Float64}(undef,6,4)
+  potatoPotential = Array{Float64}(undef,6,4)
+
+  grassTranspiration = Array{String}(undef,6,4)
+  grassFirstMowingDate = Array{String}(undef,6,4)
+  grassHarvested = Array{String}(undef,6,4)
+  grassLeftAtField = Array{String}(undef,6,4)
+
+  baseDir = "/home/wesseling/DataDisk/Wesseling/Work/Waterstof/Output/"
 
   function readIniFile()
     result = 0
@@ -147,7 +168,8 @@ module Control
         p2 = plot!(p2,date,makkingCum,label="Makking",color=:blue)
         p2 = plot!(p2,date,penmanCum,label="Penman",color=:red)
         p3=plot(p1,p2,layout=(2,1))
-        savefig("/home/wesseling/DataDisk/Wesseling/WesW/3d/Output/evaporationData_" * string(aYear) * ".png")
+        display(p3)
+#        savefig("/home/wesseling/DataDisk/Wesseling/WesW/3d/Output/evaporationData_" * string(aYear) * ".png")
 
         p4 = plot(legend=false, xlabel="Penman", ylabel="Makking",size=(500,500), xlims=(0.0,7.0), ylims=(0.0,7.0))
         x = [0.0, 7.0]
@@ -172,8 +194,8 @@ module Control
         p4 = plot!(p4, x, y, seriestype=:path, color=:blue, linestyle=:dash)
         myText = "Makking =" * @sprintf("%5.2f",intercept) * " +" * @sprintf("%6.3f", slope) * " * Penman"
         p4 = annotate!(p4, x[2], y[2], text(myText, :blue, :right, 10))
-  #      p4 = plot!(p4,lr)
-        savefig("/home/wesseling/DataDisk/Wesseling/WesW/3d/Output/evaporationXY_" * string(aYear) * ".png")
+#        display(p4)
+#        savefig("/home/wesseling/DataDisk/Wesseling/WesW/3d/Output/evaporationXY_" * string(aYear) * ".png")
       catch ex
         println("???ERROR in plotEvaporation: ",ex)
       end
@@ -216,9 +238,92 @@ module Control
     end
   end
 
+  function readTempAndHead(aCase :: Int64)
+    try
+      try
+        baseDir = "/home/wesseling/DataDisk/Wesseling/Work/Waterstof/John/Data/"
+        fileName = baseDir * "run10sim" * string(aCase) * "_pressureheadCday.csv"
+        global simulatedHead = CSV.read(fileName, DataFrame)
+        fileName = baseDir * "run10sim" * string(aCase) * "_tempertureCday.csv"
+        global simulatedTemp = CSV.read(fileName, DataFrame)
+      catch e
+        println("???ERROR in Control.readTempAndHead: ", e)
+      end
+    finally
+    end
+  end
+
+  function saveGrassResults()
+    try
+      try
+        fileName = baseDir * "Grass/cropTranspiration.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= grassTranspiration[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Grass/firstMowingDate.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= grassFirstMowingDate[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Grass/harvest.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= grassHarvested[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Grass/leftAtField.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= grassLeftAtField[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+      catch e
+        println("???ERROR in saveGrassResults: ",e)
+      end
+     finally
+    end
+  end
 
   function simulateGrassGrowth(aYear :: Int64)
-    profiles = [16,21,31,57]
     station = 344
     try
       try
@@ -227,13 +332,14 @@ module Control
 #        plotEvaporation(year)
 #        exit(0)
 #         for p in 1:1
-         for p in 1:size(profiles,1)
+        for case in 1:6
+          readTempAndHead(case)
+          Grass.setSimulatedData(simulatedHead, simulatedTemp)
           Grass.resetMowingDays()
-          profile = profiles[p]
 #         for position in 1:1
           for position in 4:-1:1
 #            println(position)
-            Grass.initialize(year, profile, position)
+            Grass.initialize(year, case, position)
             for i in 1:size(meteo,1)
               Grass.computeGrowth(meteo[i])
             end
@@ -246,10 +352,251 @@ module Control
               Grass.stopGettingMowingDates()
 #              println("After stopGettingMowingDays")
             end
+            global grassTranspiration[case,position] = Grass.actualTranspiration
+            global grassFirstMowingDate[case,position] = Grass.firstMowingDate
+            global grassHarvested[case,position] = Grass.harvested
+            global grassLeftAtField[case,position] = Grass.leftAtField
           end
         end
+        saveGrassResults()
       catch e
         println("???ERROR in Control.simulateGrassGrowth: ", e)
+      end
+    finally
+    end
+  end
+
+  function savePotatoResults()
+    try
+      try
+        fileName = baseDir * "Potatoes/cropYield.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= string(floor(Int64,potatoYield[case,position]))
+            if position != 4
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/cropYield_rel.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:3
+            x = 100.0 * (potatoYield[case,position] - potatoYield[case,4]) / potatoYield[case,4]
+            myString *= @sprintf("%5.1f",x)
+            if position != 3
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/temperatureYield.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= string(floor(Int64,potatoTemperature[case,position]))
+            if position != 4
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/temperatureYield_rel.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:3
+            x = 100.0 * (potatoTemperature[case,position] - potatoTemperature[case,4]) / potatoTemperature[case,4]
+            myString *= @sprintf("%5.1f",x)
+            if position != 3
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/potentialYield.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= string(floor(Int64,potatoPotential[case,position]))
+            if position != 4
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/potentialYield_rel.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:3
+            x = 100.0 * (potatoPotential[case,position] - potatoPotential[case,4]) / potatoPotential[case,4]
+            myString *= @sprintf("%5.1f",x)
+            if position != 3
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/moistureYield.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= string(floor(Int64,potatoMoisture[case,position]))
+            if position != 4
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/moistureYield_rel.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:3
+            x = 100.0 * (potatoMoisture[case,position] - potatoMoisture[case,4]) / potatoMoisture[case,4]
+            myString *= @sprintf("%5.1f",x)
+            if position != 3
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/yieldFraction.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            x = potatoYield[case,position] / potatoPotential[case,position]
+            myString *= @sprintf("%5.2f",x)
+            if position != 4
+              myString *= " & "
+            end
+          end
+          myString *= "\\\\ \n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+
+
+        fileName = baseDir * "Potatoes/cropEmergence.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= potatoDateEmergence[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/cropMature.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= potatoDateMature[case,position]
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+        fileName = baseDir * "Potatoes/cropTranspiration.csv"
+        myString = ""
+        for case in 1:6
+          for position in 1:4
+            myString *= string(floor(Int64,potatoTranspiration[case,position]))
+            if position != 4
+              myString *= ","
+            end
+          end
+          myString *= "\n"
+        end
+        outfile = open(fileName, "w")
+        println(outfile, myString)
+        close(outfile)
+
+      catch e
+        println("???ERROR in savePotatoResults: ",e)
+      end
+     finally
+    end
+  end
+
+  function simulatePotatoGrowth(aYear :: Int64)
+    station = 344
+    try
+      try
+        global year = aYear
+        readMeteo(station, year)
+#        plotEvaporation(year)
+#        exit(0)
+        for case in 1:6
+          readTempAndHead(case)
+          Potato.setSimulatedData(simulatedHead, simulatedTemp)
+          for position in 4:-1:1
+#            println(position)
+            Potato.initialize(year, case, position)
+            for i in 1:size(meteo,1)
+              Potato.computeGrowth(meteo[i])
+            end
+
+            Potato.plotCrop()
+            Potato.storeOutput(year)
+
+            global potatoPotential[case,position] = Potato.potentialYield
+            global potatoYield[case,position] = Potato.actualYield
+            global potatoTemperature[case,position] = Potato.temperatureYield
+            global potatoMoisture[case,position] = Potato.moistureYield
+            global potatoDateEmergence[case,position] = Potato.actualDateEmergence
+            global potatoDateMature[case,position] = Potato.actualDateMature
+            global potatoTranspiration[case,position] = Potato.actualTranspiration
+
+        end
+       end
+       savePotatoResults()
+     catch e
+        println("???ERROR in Control.simulatePotatoGrowth: ", e)
       end
     finally
     end

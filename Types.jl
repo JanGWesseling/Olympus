@@ -66,6 +66,8 @@ module Types
     storage :: Stage
     shoot :: Stage
     roots :: Stage
+    tempSum :: Float64
+    dvs :: Float64
     rootingDepth :: Float64
     lai :: Float64
     laiExp :: Float64
